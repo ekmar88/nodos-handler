@@ -1,0 +1,33 @@
+namespace nos.log;
+
+enum LogLevel : int {
+  TRACE = 0,
+  DEBUG = 1,
+  INFO = 2,
+  WARNING = 3,
+  ERROR_ = 4,
+}
+
+table Log {
+  log_level:nos.log.LogLevel;
+  timestamp_ns:ulong;
+  message:string;
+  detail:string;
+  file_name:string;
+  file_line:uint;
+}
+
+table WatchedItem {
+    key: string;
+    value: string;
+}
+
+union LogEventUnion {
+  Log,
+  WatchedItem
+}
+
+table LogEvent {
+  event:LogEventUnion;
+  publisher_name:string;
+}

@@ -1,0 +1,340 @@
+include "CommonEvents.fbs";
+include "LogEvents.fbs";
+
+namespace nos.app;
+
+struct RequestInfo {
+    client_id:uint;
+    request_id:uint;
+}
+
+// Since this is sent to only the app requesting a connection,
+// we should rename it to ConnectionApproved or something like it rather 
+// than a generic "AppConnectedEvent"
+table AppConnectedEvent {
+  node:nos.fb.Node (deprecated);
+  engine_process_id: uint64;
+}
+
+table NodeRemovedEvent {}
+
+table BatchEngineEvent {
+  events:[EngineEvent];
+}
+
+table AppExecuteInfo
+{ 
+    delta_seconds:nos.fb.vec2u(native_inline);
+}
+
+table NodeImported 
+{ 
+    node:nos.fb.Node;
+}
+
+table AppExecutePinValueUpdate
+{
+    pin_id:nos.fb.UUID(native_inline);
+    value:[ubyte];
+}
+
+table FunctionCall {
+    function_parent_id:nos.fb.UUID(native_inline);
+    function_id:nos.fb.UUID(native_inline);
+    pin_values: [AppExecutePinValueUpdate];
+}
+
+enum ExecutionState: uint
+{
+    IDLE = 0,
+    SYNCED = 1,
+}
+
+table StateChanged
+{
+    state:ExecutionState;
+}
+
+table ConsoleCommand
+{
+    command:string;
+}
+
+table TerminationRequest {}
+
+table ConsoleAutoCompleteSuggestionRequest
+{
+    input:string;
+}
+
+table LoadNodesOnPaths
+{
+    parent_node_id:nos.fb.UUID(native_inline);
+    child_node_paths:[string];
+}
+
+table AppContextMenuRequest {
+  item_id:nos.fb.UUID(native_inline);
+  pos:nos.fb.vec2(native_inline);
+  instigator:RequestInfo(native_inline);
+}
+
+table AppContextMenuAction {
+  item_id:nos.fb.UUID(native_inline);
+  command:uint;
+}
+
+table AppPinValueChanged {
+  pin_id:nos.fb.UUID(native_inline);
+  value:[ubyte];
+  reset:bool;
+  frame_number:uint64;
+}
+
+table NotifyNodeSelected
+{
+	node_id:nos.fb.UUID(native_inline);
+}
+table AppExecuteStart
+{
+    frame_counter:ulong;
+    reset: bool;
+    pin_value_updates:[AppExecutePinValueUpdate];
+}
+
+table SyncSemaphoresFromNodos
+{
+	pid : ulong;
+	input_semaphore : ulong;
+	output_semaphore : ulong;
+    timeline_semaphores: bool;
+    process_render_submitted_event: ulong;
+}
+
+union EngineEventUnion {
+  AppConnectedEvent = 1,
+  AppContextMenuRequest = 2,
+  AppContextMenuAction = 3,
+  NodeRemovedEvent = 4,
+  AppPinShowAsChanged = 5,
+  AppPinValueChanged = 6,
+  BatchEngineEvent = 7,
+  AppExecuteInfo = 8,
+  FunctionCall = 9,
+  NotifyNodeSelected = 10,
+  NodeImported = 11,
+  StateChanged = 12,
+  TerminationRequest = 13,
+  ConsoleCommand = 14,
+  ConsoleAutoCompleteSuggestionRequest = 15,
+  LoadNodesOnPaths = 16,
+  nos.PartialNodeUpdate = 17,
+  nos.PartialPinUpdate = 18,
+  AppExecuteStart = 20, // TODO: APITransition: On process api major bump, remove these ids. There is a removed(deprecated) field `FullNodeUpdate`
+  SyncSemaphoresFromNodos = 21,
+}
+
+table EngineEvent {
+  event:EngineEventUnion;
+  request_id:nos.fb.UUID;   // editor-originated request id, relayed so the app can echo it back
+}
+
+table AppConnectionRequest {
+  app_key:string (required);
+  app_name:string (required);
+  config_path:string;
+  launch_command:string;
+  used_api_version:nos.fb.SemVer;
+  app_process_id: uint64;
+}
+
+table BatchAppEvent {
+  events:[AppEvent];
+}
+
+enum ScheduleRequestKind: uint
+{ 
+    NODE = 0,       // Scheduler should walk back the node
+}
+
+table ScheduleRequest {
+  kind:ScheduleRequestKind;
+  id:nos.fb.UUID(native_inline);
+  add_schedule_count:ulong;
+  reset_schedule_count:bool;
+}
+
+table RecompilePath {
+  node_id:nos.fb.UUID(native_inline);
+}
+
+table PinDirtied {
+  pin_id:nos.fb.UUID(native_inline);
+  frame_count:ulong;
+}
+
+table UpdateStringList {
+    updated_list : nos.fb.StringList;
+}
+
+table SetThreadName {
+    handle:ulong;
+    name:string;
+}
+
+enum PathEvent : uint
+{
+	RING_SIZE_CHANGE = 0,
+	FIRST_VBL_AFTER_START = 1,
+}
+
+table ExecutePathCommand
+{
+    event: PathEvent;
+    id: nos.fb.UUID(native_inline);
+    ring_size: uint;
+    vbl_timestamp_ns: ulong;
+}
+
+table PathRestart
+{
+    pin_id: nos.fb.UUID(native_inline);
+}
+
+table ExecutionCompleted
+{
+    node_id : nos.fb.UUID(native_inline);
+    frame_counter:ulong;
+    pin_value_updates:[AppExecutePinValueUpdate];
+}
+
+table PinMetadataUpdate
+{
+    pin_id : nos.fb.UUID(native_inline);
+    new_meta_data_map:[nos.fb.MetaDataEntry];
+    clear_existing: bool;
+}
+
+table SetSyncSemaphores
+{
+    node_id : nos.fb.UUID(native_inline);
+    pid : ulong;
+    input_semaphore : ulong;
+    output_semaphore : ulong;
+}
+
+table RecoverSync
+{
+    node_id : nos.fb.UUID(native_inline);
+}
+
+table ConsoleOutput 
+{
+    message:string;
+    input_command:string;
+}
+
+table ConsoleAutoCompleteSuggestionsUpdate
+{
+    suggestions:[string];
+}
+
+table FeatureRegistrationUpdate
+{
+    item_id: nos.fb.UUID(native_inline);
+    feature_name: string;
+    unregister: bool;
+    count: uint;
+    message: string;
+    build_time: ulong;
+}
+
+table AppContextMenuUpdate 
+{
+  item_id:nos.fb.UUID(native_inline);
+  pos:nos.fb.vec2(native_inline);
+  instigator:RequestInfo(native_inline);
+  menu:[ContextMenuItem];
+  has_removable_orphans:bool;
+}
+
+table SetPinValue {
+  pin_id:nos.fb.UUID(native_inline, required);
+  value:[ubyte] (required);
+}
+
+table AppPinShowAsChanged {
+  pin_id:nos.fb.UUID(native_inline);
+  show_as:nos.fb.ShowAs;
+}
+
+table ChangeNodeParent
+{
+    node_id: nos.fb.UUID(native_inline);
+    new_parent_id: nos.fb.UUID(native_inline);
+}
+
+table NodeStatusUpdate
+{
+    node_id: nos.fb.UUID(native_inline);
+    status_messages:[nos.fb.NodeStatusMessage]; // Overrides previous messages
+}
+
+table PinResolveRequest
+{
+    pin_id: nos.fb.UUID(native_inline);
+    type_name: string;
+}
+
+table RequestSyncSemaphores
+{
+    timeline_semaphores: bool;
+}
+
+table AppConnectionClosed 
+{
+    last_processed_frame:ulong;
+}
+
+// TODO: AppSubsystem move these to the AppSubsystem and remove all fbs calls for modules, use C API instead.
+union AppEventUnion {
+  AppConnectionRequest,
+  AppContextMenuUpdate,
+  nos.PartialNodeUpdate,
+  nos.PartialPinUpdate,
+  BatchAppEvent,
+  ScheduleRequest,
+  RecompilePath,
+  PinDirtied,
+  SetPinValue,
+  UpdateStringList,
+  SetThreadName,
+  PathRestart,
+  ExecutePathCommand,
+  AppPinShowAsChanged,
+  ExecutionCompleted,
+  PinMetadataUpdate,
+  SetSyncSemaphores,
+  RecoverSync,
+  ConsoleOutput,
+  ConsoleAutoCompleteSuggestionsUpdate,
+  nos.log.LogEvent,
+  FeatureRegistrationUpdate,
+  RefreshPortals,
+  ChangeNodeParent,
+  NodeStatusUpdate,
+  PinResolveRequest,
+  RequestSyncSemaphores,
+  AppConnectionClosed,
+  UpdateNamedValues,
+  RequestCompleted,
+}
+
+table AppEvent {
+    event: AppEventUnion;
+    instigator_id:nos.fb.UUID;   // id of the request this event responds to (absent if none)
+}
+
+// Sent by an app once it has produced every response for the request identified by
+// AppEvent.instigator_id (e.g. when OnLoadNodesOnPaths has finished populating).
+table RequestCompleted {}

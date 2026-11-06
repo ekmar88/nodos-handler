@@ -1,0 +1,18 @@
+node_modules/
+.env
+*.log
+.DS_Store
+dist/
+build/
+
+# Local environment and credentials
+.env.*
+!.env.example
+.aws/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local SDK compiler (generated SDK sources are retained)
+sdk/flatc.exe

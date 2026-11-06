@@ -1,0 +1,8 @@
+include "AppEvents.fbs";
+
+namespace nos.app;
+
+rpc_service AppService
+{
+    Connect(AppEvent):EngineEvent (streaming: "bidi");
+}

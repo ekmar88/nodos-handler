@@ -1,0 +1,16 @@
+// This file is internal to Nodos
+
+include "Module.fbs";
+
+namespace nos.fb;
+
+table SubsystemConfig {
+    info:ModuleInfo (required);
+    custom_types:[string];
+    defaults:[string]; // Default values for custom types
+    binary_path:string; // Dynamic library binary path. Parent folder of this path will also be added to DLL search paths.
+    additional_search_paths:[string]; // Relative paths to folders that will be used by OS to load dependencies of a dependent DLL. 
+	asset_path:string; // Path to assets folder. This folder will be added to the search paths.
+	third_party_software: [string]; // Relative paths to JSON array files containing information on open-source/third-party software used by this module.
+	named_values: [string]; // File paths to JSON files containing named value visualizers that are introduced by the module.
+}

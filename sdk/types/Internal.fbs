@@ -1,0 +1,16 @@
+include "Common.fbs";
+
+namespace nos.engine;
+
+table EditorSession {
+    id: uint64;
+    selected_nodes: [nos.fb.UUID];
+    watched_pins: [nos.fb.UUID];
+    pin_value_update_frequency: float;
+}
+
+table Session {
+    app_instances: [nos.fb.AppInstanceInfo];
+    graph: nos.fb.Node;
+    connected_editors: [EditorSession];
+}

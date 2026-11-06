@@ -1,0 +1,284 @@
+include "Builtins.fbs";
+
+namespace nos.fb;
+
+attribute "nos_id";
+attribute "transient";
+
+struct UUID (nos_id)
+{
+    bytes: [uint8:16];
+}
+
+struct SemVer {
+	major:uint;
+	minor:uint;
+	patch:uint;
+}
+
+enum VisualizerType : uint 
+{
+  NONE = 0,
+  COLOR_PICKER = 1,
+  FILE_PICKER = 2,
+  COMBO_BOX = 3,
+  TEXTURE = 4,
+  FOLDER_PICKER = 5,
+  NAMED_VALUE = 6, // For assigning a name to a particular pin value
+  FILE_SAVER = 7
+}
+
+table NamedValue {
+	type_name: string;
+	pin_value: [ubyte] (dynamic:"type_name");
+	value_name: string;
+}
+
+table NamedValues {
+	name: string (required);
+	values: [NamedValue] (required);
+}
+
+enum FilePickerType : uint {
+  OPEN = 0,
+  SAVE = 1,
+}
+
+table Visualizer 
+{
+  type:VisualizerType;
+  name:string; // For COMBO_BOX, NAMED_VALUE
+  file_extensions:[string]; // For FILE_PICKER & FILE_SAVER
+  discarded_names:[string]; // For NAMED_VALUE
+  hide_value:bool; // For NAMED_VALUE
+  file_picker_type:FilePickerType;
+}
+
+enum ShowAs : uint {
+  NONE = 0,
+  PROPERTY = 1,
+  OUTPUT_PIN = 2,
+  INPUT_PIN = 4,
+}
+
+// Maybe convert this to a bitflag?
+enum CanShowAs : uint {
+  NONE = 0,
+  PROPERTY_ONLY = 1,
+  OUTPUT_PIN_ONLY = 2,
+  OUTPUT_PIN_OR_PROPERTY = 3,
+  INPUT_PIN_ONLY = 4,
+  INPUT_PIN_OR_PROPERTY = 5,
+  INPUT_OUTPUT = 6,
+  INPUT_OUTPUT_PROPERTY = 7,
+}
+
+enum NodeStatusMessageType : uint {
+  INFO = 0,
+  WARNING = 1,
+  FAILURE = 2
+}
+
+table NodeStatusMessage {
+  text:string;
+  type:NodeStatusMessageType;
+}
+
+table Comment {
+  id:UUID(native_inline);
+  name:string;
+  hint:string; // Seen when zoomed out
+  content:string;
+  pos:vec2(native_inline);
+  size:vec2(native_inline);
+  bg_color:vec4;
+}
+
+table Connection {
+  from:UUID(native_inline);
+  to:UUID(native_inline);
+  id:UUID(native_inline);
+}
+
+table Graph {
+    nodes: [Node];
+    comments: [Comment];
+    connections: [Connection];
+    expandable: bool = true;
+}
+
+table Job {
+    type:string; // If provided, node functions will be called from the corresponding subsystem.
+    options:[ubyte](dynamic:"type"); // Will be passed to the corresponding subsystem.
+}
+
+union NodeContents {
+  Graph,
+  Job,
+}
+
+table TemplateParameter
+{
+    name: string;
+    type_name:string;
+    value:[ubyte](dynamic:"type_name");
+}
+
+table MetaDataEntry
+{
+    key:string(key);
+    value:string;
+}
+
+table MetaDataMap
+{
+    map:[MetaDataEntry];
+}
+
+struct NodeStats {
+    avg_frame_time: float;
+    avg_fps: float;
+}
+
+union PinContents 
+{
+  PinBase, // temporary
+  PortalPin,
+  JobPin,
+}
+
+table PinBase
+{
+}
+
+table JobPin
+{
+}
+
+table PortalPin
+{
+  source_id:UUID(native_inline);
+}
+
+enum PinValueDisconnectBehavior : uint {
+  KEEP_LAST_VALUE = 0,
+  RESET_TO_DEFAULT_VALUE = 1,
+}
+
+enum PinOrphanStateType : uint8 {
+    ACTIVE = 0,
+    ORPHAN = 1,
+    PASSIVE = 2,
+}
+
+table PinOrphanState {
+    type: PinOrphanStateType;
+    message: string;
+}
+
+enum NodeOrphanStateType : uint8 {
+    ACTIVE = 0,
+    ORPHAN = 1,
+}
+
+table NodeOrphanState {
+    type: NodeOrphanStateType;
+    message: string;
+}
+
+table Pin {
+  id:UUID(native_inline);
+  name:string;
+  type_name:string;
+  show_as:ShowAs;
+  can_show_as:CanShowAs;
+  pin_category:string; //TODO APITransition: Add deprecated attribute on the next transition
+  visualizer:Visualizer;
+  data:[ubyte](dynamic:"type_name");
+  referred_by:[UUID];
+  min:[ubyte](dynamic:"type_name");
+  max:[ubyte](dynamic:"type_name");
+  def:[ubyte](dynamic:"type_name");
+  step:float;
+  readonly:bool;
+  advanced_property:bool; //TODO APITransition: Add deprecated attribute on the next transition
+  transient:bool;
+  meta_data_map:[MetaDataEntry]; //(cpp_ptr_type:"naked", cpp_ptr_type_get:"");    
+  live:bool;
+  contents:PinContents;
+  orphan_state:PinOrphanState (transient);
+  on_disconnect:PinValueDisconnectBehavior;
+  description:string;
+  display_name:string;
+  connection_conditions:string;
+  has_known_type:bool(transient);
+  preferred_at_drag_create:bool;
+}
+
+enum NodeSchedulingType : uint {
+    Regular = 0, // Non-function Non-event
+    Function = 1,
+    Event = 2,
+}
+
+enum NodeInactivityReasons : uint (bit_flags) {
+    MISSING_MODULES = 0,
+    PIN_WITH_MISSING_TYPE = 1,
+    CREATING_OR_DELETING = 2,
+}
+
+// TODO: Seperating the instance info and class info (class info in nosdef files, instance info in nos files) might be better.
+table Node {
+  id:UUID(native_inline);
+  name:string;
+  class_name:string;
+  always_execute:bool;
+  pins:[Pin];
+  pos:vec2(native_inline);
+  contents:NodeContents;
+  app_key:string;
+  functions:[Node];
+  function_category:string;
+  status_messages:[NodeStatusMessage];
+  transient:bool;
+  meta_data_map:[MetaDataEntry];
+  orphan_state:NodeOrphanState (transient);
+  description:string;
+  display_name:string;
+  template_parameters:[TemplateParameter];
+  has_responsive_module:bool(transient, deprecated);
+  plugin_version:SemVer;
+  scheduling_type:NodeSchedulingType;
+  inactivity_reasons:NodeInactivityReasons(transient);
+}
+
+table AppInstanceInfo {
+    node_id:nos.fb.UUID(native_inline);
+    app_key:string(required);
+    launch_command:string;
+    app_service_client_id:ulong;
+    process_id:ulong;
+}
+
+table ModuleIdentifier {
+    name:string (required); // Unique name of the plugin, e.g. "Acme.Foo"
+    version:string (required);
+}
+
+table EngineInfo {
+    version: string;
+    build_time: string;
+    loaded_modules: [nos.fb.ModuleIdentifier];
+}
+
+table SaveData {
+    info: EngineInfo;
+    graph: nos.fb.Node (required);
+}
+
+table ModuleIndex
+{
+    url: string;
+    name: string; // optional
+	is_active: bool;
+}

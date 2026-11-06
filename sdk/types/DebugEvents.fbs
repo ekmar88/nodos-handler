@@ -1,0 +1,140 @@
+include "Common.fbs";
+
+namespace nos.editor;
+
+// Requests
+table UpdateRunnerStatusRequest {
+    runner_id: nos.fb.UUID;
+    suspended: bool;
+    suspended_time_ms: ulong; //suspended time of each iteration as ms
+    running_time_ms: ulong; //running time between iterations as ms
+    repeat_count: int;
+}
+
+table UpdateNodeMetricsRequest {
+    benchmark: bool;
+}
+
+table RequestPathRestart {
+    runner_id: nos.fb.UUID;
+}
+
+table RequestChangeProfilingState {
+	activate: bool;
+}
+
+table RequestChangeModuleCallTracingState {
+	activate: bool;
+}
+
+union DebugRequestUnion {
+    UpdateRunnerStatusRequest,
+    UpdateNodeMetricsRequest,
+    RequestPathRestart,
+    RequestChangeProfilingState,
+	RequestChangeModuleCallTracingState,
+}
+
+table DebugRequest {
+    request: DebugRequestUnion;
+}
+
+// Responses
+enum RunnerStatus : uint8 {
+    RUNNING = 0,
+    SUSPENDED = 1,
+    TESTING_RUNNING = 2,
+    TESTING_SUSPENDED = 3,
+}
+
+table RunnerStatusListItem {
+    runner_id: nos.fb.UUID;
+    status: RunnerStatus;
+}
+
+table RunnerStatusListUpdate {
+    runner_list: [RunnerStatusListItem];
+}
+
+table PinFrameNumberUpdate {
+    pin_path: string;
+    frame_number: uint64;
+}
+
+table PinUpdateTimeUpdate {
+    pin_path: string;
+    update_time_ns: uint64; // This is a local clock, not a global time but it is guaranteed to only increase.
+}
+
+table NodeStatsUpdateItem {
+    node_path: string;
+    stats: nos.fb.NodeStats (native_inline);
+}
+
+table NodeStatsUpdate {
+    updates: [NodeStatsUpdateItem];
+}
+
+table ModuleFunctionCall {
+    module: nos.fb.ModuleIdentifier (required);
+    related_item: nos.fb.UUID; // Optional
+    function_name: string (required);
+    timestamp_ns: uint64; // Not guaranteed to be from epoch.
+    calling_thread: string; // Name or ID to describe the calling thread
+}
+
+table SchedulingInsightCommand {
+    name: string;
+    item_id: nos.fb.UUID;
+}
+
+table SchedulingInsight {
+    scheduled_node: nos.fb.UUID (required);
+    commands: [SchedulingInsightCommand];
+}
+
+table Insights {
+    new_module_calls: [ModuleFunctionCall];
+    scheduled_nodes: [SchedulingInsight];
+}
+
+table ModuleCallTracingState {
+    is_active: bool;
+}
+
+table ProfilerEvent
+{
+    name: string;
+    description: string;
+    tags: [string];
+    associated_item_id: nos.fb.UUID;
+    color: nos.fb.vec4; // RGBA
+    start_time: ulong; // Time in nanoseconds, relative to the start of the frame
+    duration: ulong; // Time in nanoseconds
+    child_frame_events: [ProfilerEvent];
+}
+
+table ProfilerFrame
+{
+	key: string;
+    root_event: ProfilerEvent;
+}
+
+table ProfilerFramesUpdate
+{
+	profiler_frames:[ProfilerFrame];
+}
+
+union DebugEventUnion {
+    RunnerStatusListUpdate,
+    PinFrameNumberUpdate,
+    NodeStatsUpdate,
+    Insights,
+    ProfilerFramesUpdate,
+    ModuleCallTracingState,
+    PinUpdateTimeUpdate
+}
+
+table DebugEvent {
+    event: DebugEventUnion;
+}

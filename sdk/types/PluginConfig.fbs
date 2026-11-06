@@ -1,0 +1,59 @@
+include "Builtins.fbs";
+include "Module.fbs";
+
+namespace nos.fb;
+
+table NodePreset
+{
+    menu_info: NodeMenuInfo (required);
+    params: [fb.TemplateParameter];
+}
+
+table NodeMenuInfo
+{
+    display_name: string;
+    category: string;
+    name_aliases: [string];
+}
+
+table NodeDefinition
+{
+    class_name: string (required);
+    hide_in_context_menu: bool;
+    menu_info: NodeMenuInfo;
+    presets: [NodePreset];
+    node: nos.fb.Node;
+}
+
+table NodeMenuEntry
+{
+    class_name: string;
+    info: NodeMenuInfo;
+    params: [fb.TemplateParameter];
+}
+
+table NodeDefinitions
+{
+    nodes: [NodeDefinition];
+}
+
+table SubsystemOptions 
+{
+    subsystem:string; // If provided, node functions will be called from the corresponding subsystem.
+    path:string;
+    type:string;
+}
+
+table PluginConfig {
+    info:ModuleInfo (required);
+    // Relative paths (w.r.t. noscfg file)
+    custom_types:[string];
+    defaults:[string]; // Default value files for custom types
+    node_definitions:[string]; // Node definition files
+    binary_path:string; // Dynamic library binary path. Parent folder of this path will also be added to DLL search paths.
+    additional_search_paths:[string]; // Relative paths to folders that will be used by OS to load dependencies of a dependent DLL. 
+    subsystem_options:[SubsystemOptions];
+	asset_path:string; // Path to assets folder. This folder will be added to the search paths.
+	third_party_software: [string]; // Relative paths to files containing information on open-source/third-party software used by this module.
+	named_values: [string]; // File paths to JSON files containing named value visualizers that are introduced by the module.
+}

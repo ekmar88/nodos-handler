@@ -1,0 +1,24 @@
+{
+  "name": "nodos-backend",
+  "version": "1.0.0",
+  "description": "Express backend to control Nodos node properties via gRPC",
+  "type": "module",
+  "engines": { "node": ">=20.12.0" },
+  "main": "src/app.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "proto:generate": "grpc_tools_node_protoc -I proto --js_out=import_style=commonjs,binary:proto --grpc_out=proto proto/nodos_app.proto"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.2",
+    "@grpc/proto-loader": "^0.7.13",
+    "express": "^4.21.0",
+    "flatbuffers": "^25.9.23",
+    "flatbuffers_reflection": "^1.3.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}

@@ -1,0 +1,70 @@
+include "Common.fbs";
+
+namespace nos.fb;
+
+enum ModuleStatus: uint8 {
+    LOADING,
+    LOADED,
+    UNLOADED,
+    FAILED_TO_LOAD,
+    UNLOADING,
+}
+
+enum ModuleType: uint8 {
+    PLUGIN,
+    SUBSYSTEM,
+    ENGINE
+}
+
+table ModuleInfo {
+    id:ModuleIdentifier (required);
+    display_name:string (required);
+    description:string;
+    dependencies:[ModuleIdentifier];
+    category:string;
+    tags:[string];
+} // Should we include module_type here?
+
+table ModuleDownloadState {
+    id: ModuleIdentifier (required);
+    error:string;
+    downloaded:int64;
+    total:int64;
+}
+
+table ThirdPartySoftwareInfo {
+    name:string (required);
+    version:string (required);
+    license_text:string;
+    url:string;
+}
+
+table ThirdPartySoftwareInfoList {
+    list:[ThirdPartySoftwareInfo];
+}
+
+enum ModuleStatusMessageType : int {
+    INFO,
+    WARNING,
+    ERROR_
+}
+
+table ModuleStatusMessage {
+    message:string;
+    type:ModuleStatusMessageType;
+}
+
+table ModuleState {
+    module:ModuleInfo;
+    status:ModuleStatus;
+    incompatible_api:bool;
+    is_prod:bool; // If true, this version is a stable production release
+    module_path:string; // Path to the binary module
+    is_local:bool; // If true, this plugin is installed locally
+    loaded_module_path:string; // Path to the cached binary module that is actually loaded
+    type:ModuleType;
+    build_timestamp:int64; // Seconds since epoch
+    root_path: string; // Path to the folder containing module config file.
+    third_party_software:[ThirdPartySoftwareInfo];
+    release_tags: [string];
+}

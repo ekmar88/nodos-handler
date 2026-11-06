@@ -1,0 +1,28 @@
+include "LogEvents.fbs";
+
+namespace nos.log;
+
+table ListenerInfo {
+  listener_name:string;
+  black_listed_publishers:[string];
+  min_log_level:nos.log.LogLevel;
+}
+
+table PublisherInfo {
+  publisher_name:string;
+  black_listed_listeners:[string];
+}
+
+table PublisherList {
+  publishers:[nos.log.PublisherInfo];
+}
+
+table ListenerList {
+  listeners:[nos.log.ListenerInfo];
+}
+
+
+rpc_service LoggerService
+{
+    Connect(LogEvent):LogEvent (streaming: "bidi");
+}

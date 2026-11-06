@@ -1,0 +1,74 @@
+// Generated from Settings.proto
+// This file is internal to Nodos
+
+include "PluginConfig.fbs";
+
+namespace nos.fb;
+
+table AppRegistryEntry {
+  app_name:string;
+  app_key:string;
+  launch_configurations:[string];
+}
+
+table EngineConnectionSettings {
+  logging_service_address:string;
+  node_graph_service_address:string;
+  app_service_address:string;
+}
+
+table StartupSettings {
+  last_known_graph_path:string;
+}
+
+table EngineSettings {
+  module_folders:[string];
+  builtin_type_folders:[string];
+  remote_modules:[ModuleIndex];
+  engine_index_url: string;
+  connection_settings:EngineConnectionSettings;
+  startup_settings:StartupSettings;
+  undo_redo_queue_size:uint = 128;
+  free_run_delta_seconds:vec2u;
+}
+
+table EditorConnectionSettings {
+    logging_service_address:string;
+    node_graph_service_address:string;
+    launch_app_request_timeout_in_milliseconds:ulong = 600000;
+}
+
+table EditorRecentlyOpenedGraphSettings{
+  max_list_size:uint;
+  paths:[string];
+}
+
+table EditorNodeGraphSettings{
+  inactive_connection_alpha:float;
+  dirty_connection_period_in_microseconds:ulong;
+  node_name_character_limit:uint = 0;
+}
+
+table EditorInsightsPaneColorSettings{
+  default_selected_color:vec3;
+  execute_command_color:vec3;
+  function_call_color:vec3;
+}
+
+table EditorUserData {
+  connection_settings:EditorConnectionSettings;
+  recent_graphs_list:EditorRecentlyOpenedGraphSettings;
+  node_graph_settings:EditorNodeGraphSettings;
+  insights_pane_color_settings:EditorInsightsPaneColorSettings;
+}
+
+table EngineProfile {
+    loaded_modules: [nos.fb.ModuleIdentifier];
+}
+
+table EngineCommonProfile {
+    app_registries: [AppRegistryEntry] (required);
+}
+
+// TODO: When/if typescript generator starts supporting namespaces,
+// add EditorSettings and EngineSettings into engine & editor namespaces respectively.

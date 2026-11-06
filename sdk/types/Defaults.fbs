@@ -1,0 +1,10 @@
+// This file is internal to Nodos
+
+include "Common.fbs";
+
+namespace nos.fb;
+
+// TODO: Support loading vector of tables from a JSON file.
+table Defaults {
+	defaults: [Pin];
+}

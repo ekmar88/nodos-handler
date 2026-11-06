@@ -1,0 +1,145 @@
+attribute "hidden_property";
+attribute "units";
+attribute "builtin";
+attribute "skip_make";
+attribute "skip_break";
+attribute "skip_delay";
+attribute "dynamic";
+attribute "resource";
+attribute "strict_type";
+
+namespace nos;
+// Execution pin data type:
+table exe (strict_type) {
+}
+table Generic (builtin, skip_make, skip_delay) { }
+
+namespace nos.fb;
+
+table StringList (builtin, skip_make, skip_delay, skip_break) {
+    name:string;
+    list:[string];
+}
+
+struct vec2 (builtin) {
+  x:float;
+  y:float;
+}
+
+struct vec2d (builtin) {
+  x:double;
+  y:double;
+}
+
+struct vec2i (builtin) {
+  x:int;
+  y:int;
+}
+
+struct vec2u (builtin) {
+  x:uint;
+  y:uint;
+}
+
+struct vec3 (builtin) {
+  x:float;
+  y:float;
+  z:float;
+}
+
+struct vec3d (builtin) {
+  x:double;
+  y:double;
+  z:double;
+}
+
+struct vec3i (builtin) {
+  x:int;
+  y:int;
+  z:int;
+}
+
+struct vec3u (builtin) {
+  x:uint;
+  y:uint;
+  z:uint;
+}
+
+struct vec4 (builtin) {
+  x:float;
+  y:float;
+  z:float;
+  w:float;
+}
+
+struct vec4d (builtin) {
+  x:double;
+  y:double;
+  z:double;
+  w:double;
+}
+
+struct vec4i (builtin) {
+  x:int;
+  y:int;
+  z:int;
+  w:int;
+}
+
+struct vec4u (builtin) {
+  x:uint;
+  y:uint;
+  z:uint;
+  w:uint;
+}
+
+struct vec4u8 (builtin)
+{
+  x:ubyte;
+  y:ubyte;
+  z:ubyte;
+  w:ubyte;
+}
+
+struct mat2 (builtin) {
+  x:vec2(native_inline);
+  y:vec2(native_inline);
+}
+
+struct mat3 (builtin) {
+  x:vec3(native_inline);
+  y:vec3(native_inline);
+  z:vec3(native_inline);
+}
+
+struct mat4 (builtin) {
+  x:vec4(native_inline);
+  y:vec4(native_inline);
+  z:vec4(native_inline);
+  w:vec4(native_inline);
+}
+
+struct mat2d (builtin) {
+  x:vec2d(native_inline);
+  y:vec2d(native_inline);
+}
+
+struct mat3d (builtin) {
+  x:vec3d(native_inline);
+  y:vec3d(native_inline);
+  z:vec3d(native_inline);
+}
+
+struct mat4d (builtin) {
+  x:vec4d(native_inline);
+  y:vec4d(native_inline);
+  z:vec4d(native_inline);
+  w:vec4d(native_inline);
+}
+
+struct Transform (builtin)
+{
+    position: vec3d;
+    rotation: vec3d;
+    scale:    vec3d;
+}

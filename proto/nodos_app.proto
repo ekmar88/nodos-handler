@@ -1,0 +1,194 @@
+syntax = "proto3";
+
+package nodos.app.v1;
+
+// ============================================================
+// Nodos Application Service gRPC definitions
+// Based on Nodos Application SDK (process SDK 21.0)
+// Service address: connection_settings/app_service_address
+// Default: 0.0.0.0:50053
+// ============================================================
+
+// --- Enums ---
+
+enum EventType {
+  EVENT_UNSPECIFIED = 0;
+  // Node lifecycle
+  EVENT_NODE_CREATED = 1;
+  EVENT_NODE_UPDATED = 2;
+  EVENT_NODE_REMOVED = 3;
+  // Pin operations
+  EVENT_PIN_VALUE_CHANGED = 4;
+  EVENT_PIN_DIRTIED = 5;
+  EVENT_PIN_CONNECTED = 6;
+  EVENT_PIN_DISCONNECTED = 7;
+  EVENT_PIN_OBJECT_CHANGED = 8;
+  EVENT_PIN_SHOW_AS_CHANGED = 9;
+  // Node functions
+  EVENT_FUNCTION_CALL = 10;
+  // Frame execution
+  EVENT_PRE_EXECUTE = 11;
+  EVENT_POST_EXECUTE = 12;
+  EVENT_SKIPPED_EXECUTION = 13;
+  // Context menus
+  EVENT_CONTEXT_MENU_REQUEST = 14;
+  EVENT_CONTEXT_MENU_COMMAND = 15;
+  // Logging
+  EVENT_LOG = 16;
+  EVENT_WATCH_LOG = 17;
+  // Handle operations
+  EVENT_DUPLICATE_HANDLE = 18;
+  EVENT_CLOSE_HANDLE = 19;
+  // Console
+  EVENT_CONSOLE_COMMAND = 20;
+  // Execution state
+  EVENT_EXECUTION_STATE_CHANGED = 21;
+}
+
+enum PinValueType {
+  PIN_VALUE_UNSPECIFIED = 0;
+  PIN_VALUE_VEC3 = 1;       // Location node: vec3 (x, y, z)
+  PIN_VALUE_DOUBLE = 2;     // Double node: double
+  PIN_VALUE_STRING = 3;     // String node: string
+  PIN_VALUE_BOOL = 4;       // Bool node: bool
+  PIN_VALUE_INT32 = 5;
+  PIN_VALUE_INT64 = 6;
+  PIN_VALUE_UINT32 = 7;
+  PIN_VALUE_OBJECT = 8;
+}
+
+enum NodeStatusMessageType {
+  STATUS_INFO = 0;
+  STATUS_WARNING = 1;
+  STATUS_FAILURE = 2;
+}
+
+enum PathState {
+  PATH_STATE_IDLE = 0;
+  PATH_STATE_RUNNING = 1;
+  PATH_STATE_STOPPING = 2;
+  PATH_STATE_STOPPED = 3;
+}
+
+// --- Messages ---
+
+message UUID {
+  uint64 part_a = 1;
+  uint64 part_b = 2;
+}
+
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message PinValue {
+  UUID pin_id = 1;
+  PinValueType type = 2;
+  // For Vec3 (Location node)
+  Vec3 vec3_value = 10;
+  // For Double node
+  double double_value = 11;
+  // For String node
+  string string_value = 12;
+  // For Bool node
+  bool bool_value = 13;
+  // Generic binary payload (for FlatBuffers data)
+  bytes raw_data = 20;
+}
+
+message NodeInfo {
+  UUID node_id = 1;
+  string class_name = 2;
+  string display_name = 3;
+  map<string, PinValue> pin_values = 4;
+}
+
+message AppEvent {
+  EventType type = 1;
+  // Application identity
+  string app_key = 10;
+  string app_name = 11;
+  // Node-related fields
+  NodeInfo node = 12;
+  PinValue pin_value = 13;
+  map<string, PinValue> pin_values = 14;
+  // Frame-related fields
+  uint64 frame_number = 20;
+  bytes frame_context = 21;  // opaque frame context (binary)
+  // Function call
+  string function_name = 22;
+  // Log
+  string log_message = 23;
+  string log_detail = 24;
+  string log_key = 25;
+  // Handle
+  uint64 handle = 26;
+  // Console
+  string console_command = 27;
+  // Execution state
+  PathState old_state = 28;
+  PathState new_state = 29;
+  // Context menu
+  UUID menu_node_id = 30;
+  uint32 menu_command = 31;
+}
+
+message EngineEvent {
+  EventType type = 1;
+  // Node imported / created
+  NodeInfo imported_node = 10;
+  // Frame sync
+  uint64 frame_number = 11;
+  // Execution state
+  PathState execution_state = 12;
+  // Skipped execution info
+  uint64 skipped_start = 13;
+  uint64 skipped_end = 14;
+  // Status
+  bool success = 20;
+  string error_message = 21;
+}
+
+message Status {
+  bool success = 1;
+  string error_message = 2;
+}
+
+// --- Service ---
+
+service AppService {
+  // Send an event from the application to the engine
+  rpc Send(AppEvent) returns (EngineEvent);
+
+  // Notify that a pin's value has changed
+  rpc NotifyPinValueChanged(AppEvent) returns (Status);
+
+  // Notify that a pin has been dirtied (needs recomputation)
+  rpc NotifyPinDirtied(AppEvent) returns (Status);
+
+  // Send partial node update (add/remove pins, change properties)
+  rpc SendPartialNodeUpdate(AppEvent) returns (Status);
+
+  // Change how a pin is displayed in the editor
+  rpc SendPinShowAsChange(AppEvent) returns (Status);
+
+  // Update context menu
+  rpc SendContextMenuUpdate(AppEvent) returns (Status);
+
+  // Update string list (for dropdown pins)
+  rpc UpdateStringList(AppEvent) returns (Status);
+
+  // Write to editor log
+  rpc SendLog(AppEvent) returns (Status);
+
+  // Write to watch log
+  rpc SendWatchLog(AppEvent) returns (Status);
+
+  // Share an OS handle with the engine
+  rpc DuplicateHandle(AppEvent) returns (Status);
+
+  // Close a shared handle
+  rpc CloseHandle(AppEvent) returns (Status);
+}

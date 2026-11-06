@@ -1,0 +1,10 @@
+// Generated from EditorService.proto
+
+include "EditorEvents.fbs";
+
+namespace nos.editor;
+
+rpc_service EditorService
+{
+    Connect(FromEditor):FromEngine (streaming: "bidi");
+}

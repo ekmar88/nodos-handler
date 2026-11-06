@@ -1,0 +1,731 @@
+include "CommonEvents.fbs";
+include "PluginConfig.fbs";
+include "DebugEvents.fbs";
+include "Module.fbs";
+include "Settings.fbs";
+
+namespace nos.editor;
+
+union FromEditorUnion 
+{
+  EditorPinShowAsChangeRequest,
+  EditorPinValueChanged,
+  ConnectionRequest,
+  CreateNodeRequest,
+  DeleteNodeRequest,
+  NodeMoved,
+  ConnectPinRequest,
+  DisconnectRequest,
+  LoadModuleRequest,
+  UnloadModuleRequest,
+  CommentInfo,
+  ShutDownRequest,
+  EditorContextMenuRequest,
+  EditorContextMenuAction,
+  CreatePortalNodeRequest,
+  LaunchAppRequest,
+  CreatePinRequest,
+  GraphExportRequest,
+  GraphImportRequest,
+  CollapseIntoGraphRequest,
+  CommentUpdated,
+  DeleteCommentRequest,
+  ClearGraphRequest,
+  RenameNodeRequest,
+  SetDisplayName,
+  BatchRequest,
+  InputEvent,
+  FunctionCallRequest,
+  NodeSelected,
+  NodeDeselected,
+  WatchPin,
+  UnwatchPin,
+  SetConsoleVariable,
+  DebugRequest,
+  CloseAppRequest,
+  CreateRerouteNodeRequest,
+  AppConsoleCommand,
+  AppConsoleAutoCompleteSuggestionRequest,
+  LoadEngineRequest,
+  UnloadEngineRequest,
+  RemoveOrphanPinsRequest,
+  FetchModuleIndex,
+  CustomMessage,
+  LoadNodesOnPathsRequest,
+  UpdateNodosEULAState,
+  ExpandGraphRequest,
+  UndoOrRedoRequest,
+  BeginRequest,
+  EndRequest,
+  CreatePortalOnParentGraphRequest,
+  NodeMetadataUpdate,
+  RemoteIndexUpdateRequest,
+  ChangeLiveModeState,
+  UpdateAllModules,
+  RemoveAppRegistries,
+  RegisterApp,
+  PinMetadataUpdate,
+  RemovePortalFromParentGraphRequest
+}
+
+table ChangeLiveModeState {
+  enabled:bool;
+}
+
+table RemoteIndexUpdateRequest {
+	remotes:[nos.fb.ModuleIndex];
+}
+
+table NodeMetadataUpdate {
+	node_path:string (required);
+	new_meta_data_map:[nos.fb.MetaDataEntry];
+    clear_existing: bool;
+}
+
+table PinMetadataUpdate {
+	pin_path:string (required);
+	new_meta_data_map:[nos.fb.MetaDataEntry];
+    clear_existing: bool;
+}
+
+table EditorPinShowAsChangeRequest {
+  pin_path:string (required);
+  show_as:nos.fb.ShowAs;
+}
+
+table ExpandGraphRequest
+{
+	graph_path:string (required);
+}
+
+table FetchModuleIndex {
+    module_type:nos.fb.ModuleType;
+    only_local:bool;
+}
+
+table AppConsoleCommand
+{
+    app_key:string (required);
+    command:string;
+}
+
+table AppConsoleAutoCompleteSuggestionRequest
+{
+    app_key:string (required);
+    input:string;
+}
+
+table ConsoleVariable {
+    var:string;
+    val:string;
+}
+
+table SetConsoleVariable {
+    values:[ConsoleVariable];
+}
+
+table FunctionCallRequest {
+   path:string (required); // Path from unique names. If set, id is not used, and function will be resolved by the path
+}
+
+enum Action: uint8
+{
+    RELEASE = 0,
+    PRESS = 1,
+    REPEAT = 2,
+}
+
+table InputEvent {
+  node_path:string (required);
+  key:ulong;
+  button:ulong;
+  mouse_delta:nos.fb.vec2(native_inline);
+  action:Action;
+}
+
+table FromEditor {
+  event:FromEditorUnion (required);
+  request_id:nos.fb.UUID;   // editor-generated id for this request (UUID so editors never clash)
+}
+
+table ClearGraphRequest {
+  graph_path:string (required);
+}
+
+table DeleteCommentRequest {
+  comment_path:string (required);
+}
+
+table CollapseIntoGraphRequest {
+  parent_path:string (required);
+  item_names:[string]; // Nodes and comments
+}
+
+table CommentInfo {
+  parent_graph_path: string(required);
+  comment:nos.fb.Comment;
+}
+
+table LaunchAppRequest {
+  app_key:string;
+  launch_command:string;
+}
+
+table BatchRequest {
+  requests:[FromEditor];
+}
+
+table AppInstancesUpdated {
+  app_instances:[nos.fb.AppInstanceInfo];
+}
+
+table RemoveAppRegistries {
+	app_registries:[string];
+}
+
+table RegisterApp{
+	app_registry: nos.fb.AppRegistryEntry;
+}
+
+table BatchEvent {
+  events:[FromEngine];
+}
+
+table ConnectionRequest {
+  client_name:string;
+  pin_value_update_frequency:float;
+}
+
+/// Loads/reloads plugins & subsystems. If the request contains an already loaded module with different version,
+/// the old module will be unloaded and the new one will be loaded.
+table LoadModuleRequest {
+    // TODO: Reload select plugins.
+    modules:[nos.fb.ModuleIdentifier]; // If empty, all plugins and subsystems will be reloaded.
+}
+
+table UnloadModuleRequest {
+    modules:[nos.fb.ModuleIdentifier]; // If empty, all plugins and subsystems will be unloaded.
+}
+
+table LoadEngineRequest {
+    // TODO: Add option to skip restoring graph.
+    version:string; // Empty if latest.
+}
+
+table EngineVersionInfo {
+  version:string;
+  incompatible:bool;
+  release_date:string;
+}
+
+table EngineVersions {
+    versions:[EngineVersionInfo];
+}
+
+table UnloadEngineRequest {
+}
+
+table ShutDownRequest {
+}
+
+table CreateNodeRequest {
+  class_name:string;
+  parent_path:string;
+  position:nos.fb.vec2(native_inline);
+  app_key:string;
+  pin_to_connect:string;
+  params:[fb.TemplateParameter];
+}
+
+table RerouteConnections 
+{
+    connections: [string]; //Insert reroute into connections, or pass empty for a single reroute node without connections
+} 
+
+union RerouteRequestType 
+{
+    RerouteConnections: RerouteConnections,
+    CreateFromPin: string, //Create a single reroute from a pin
+}
+
+table CreateRerouteNodeRequest {
+  parent_path:string;
+  positions:[nos.fb.vec2]; // Vector only when passing connections vector
+  reroute_type:RerouteRequestType;
+}
+
+table DeleteNodeRequest {
+  node_path:string;
+}
+
+table NodeMoved {
+  node_path:string (required);
+  pos:nos.fb.vec2(native_inline);
+}
+
+table ConnectPinRequest {
+  start_pin_path:string (required);
+  end_pin_path:string (required);
+}
+
+enum DisconnectType: uint8 {
+    PIN,
+    CONNECTION,
+}
+
+table DisconnectRequest {
+  path:string;
+  type:DisconnectType;
+}
+
+table CreatePortalNodeRequest {
+  source_pin_path:string;
+  parent_path:string;
+  pos:nos.fb.vec2(native_inline);
+  new_show_as:nos.fb.ShowAs;
+}
+
+table CreatePinRequest {
+  pin_to_create:nos.fb.Pin;
+  parent_path:string;
+  io_node_pos:nos.fb.vec2(native_inline); // The initial position for graph input/output node.
+  pin_to_connect:string; // Path
+}
+
+table RenameNodeRequest {
+  node_path:string;
+  new_name:string; // Must be unique or update will be rejected.
+}
+
+table SetDisplayName {
+  item_path:string; // Node, graph or pin
+  display_name:string;
+}
+
+table ExportNodeCollection {
+    item_ids:[nos.fb.UUID] (required); // Nodes and comments
+}
+
+table ExportAsNosDef {
+	node_path: string;
+    class_name: string;
+}
+
+union GraphExportType {
+    ExportGraphAsSave: string, // if this is empty, the root graph will be exported
+    ExportNodeCollection,
+    ExportAsNosDef,
+}
+
+table GraphExportRequest {
+  request_id:ulong;
+  export_from:GraphExportType;
+}
+ 
+table GraphImportRequest {
+  graph_to_import_json:string;
+  clear_root_graph:bool;
+  parent_graph_path:string;
+  pos:nos.fb.vec2;
+  insert_as_graph: bool; // If true, the graph will be unpacked and the nodes will be placed in the parent graph, if false, the graph will be loaded as a subgraph, not supported yet
+  graph_file_path: string; // If clear_root_graph is true, this will be used to annotate the file path of the imported graph
+  open_in_live_mode: bool;
+}
+
+// Subscribe to pin value updates of this specific pin
+table WatchPin {
+  pin_path:string (required);
+}
+
+// Unsubscribe from pin value updates of this specific pin
+table UnwatchPin {
+  pin_path:string (required);
+}
+
+table CloseAppRequest {
+  app_key: string (required);
+}
+
+table LaunchAppFromNodeRequest {
+  node_path:string (required);
+}
+
+table AppConsoleOutput
+{
+    app_key:string (required);
+    message:string;
+    input_command:string;
+}
+
+table AppConsoleAutoCompleteSuggestionsUpdate
+{
+    app_key:string (required);
+    suggestions:[string];
+}
+
+//item path can point to a node or a pin, if its a pin, then it will be removed, if its a node, all orphan pins will be removed
+table RemoveOrphanPinsRequest
+{
+    item_path:string(required);
+}
+
+table EditorContextMenuRequest {
+  item_path:string (required);
+  pos:nos.fb.vec2(native_inline);
+  request_id:uint;
+}
+
+table EditorContextMenuAction {
+  item_path:string (required);
+  command:uint;
+}
+
+table NodeSelected {
+    node_path:string (required);
+}
+
+table NodeDeselected {
+    node_path:string (required);
+}
+
+enum EULAState: uint8 {
+    UNSPECIFIED = 0,
+    ACCEPTED = 1,
+    DECLINED = 2
+}
+
+table UpdateNodosEULAState {
+    new_state: EULAState;
+    // TODO: Maybe add mac_address to connectionrequest and here.
+}
+
+table UndoOrRedoRequest {
+    undo:bool;
+}
+
+table BeginRequest {
+    request_name:string;
+}
+
+table EndRequest {
+}
+
+table CreatePortalOnParentGraphRequest 
+{
+	parent_path:string (required);
+    pin_path:string (required);
+}
+
+table RemovePortalFromParentGraphRequest 
+{
+	parent_path:string (required);
+    pin_path:string (required);
+}
+
+union FromEngineUnion {
+  ClientConnected,
+  NodeCreated,
+  NodeDeleted,
+  PinConnected,
+  ConnectionRemoved,
+  ServerStatus,
+  EditorPinValueChanged,
+  CommentInfo,
+  EditorContextMenuUpdate,
+  GraphExported,
+  CommentUpdated,
+  AppInstancesUpdated,
+  CommentDeleted,
+  EngineMetrics,
+  BatchEvent,
+  KnownListsUpdated,
+  PinsWithChangedValues,
+  NavigateToNode,
+  DebugEvent,
+  ModuleStateUpdate,
+  AppConsoleOutput,
+  AppConsoleAutoCompleteSuggestionsUpdate,
+  EngineModuleState,
+  EngineVersions,
+  CustomMessage,
+  RefreshPortals,
+  nos.fb.ModuleDownloadState,
+  PinCreated,
+  FunctionCreated,
+  PinDeleted,
+  NodosEULA,
+  ThirdPartySoftwareLicenses,
+  EditorPartialItemUpdate,
+  UndoRedoStackUpdate,
+  ChangeLiveModeState,
+  ModuleStatusMessageUpdate,
+  AppRegistriesUpdate,
+  AppProcessClosed,
+  UpdateNamedValues,
+  AppProcessOpened,
+  CrashReport,
+  RequestCompleted,
+}
+
+table CrashReport {
+  timestamp_ms:ulong;
+  message:string;
+  responsible_module:nos.fb.ModuleIdentifier;
+}
+
+table NodosEULA {
+    state: EULAState;
+    accepting_host_name: string;
+    acceptation_date_iso: string;
+    text: string;
+}
+
+table ThirdPartySoftwareLicense {
+    module_id: nos.fb.ModuleIdentifier;
+    license_texts: [string];
+}
+
+table ThirdPartySoftwareLicenses {
+    licenses: [ThirdPartySoftwareLicense];
+}
+
+table FromEngine {
+  event:FromEngineUnion (required);
+  instigator_id:nos.fb.UUID;   // id of the request this event responds to (absent if none)
+}
+
+// Sent to editors when the engine has relayed every response for the request
+// identified by FromEngine.instigator_id - i.e. the event stream for it has ended.
+table RequestCompleted {}
+
+table ClientConnected {
+  client_id:ulong;
+  status:ServerStatus;
+  api_version:nos.fb.SemVer;
+  engine_process_id: uint64;
+  nodos_version: string;
+}
+
+// Updates?
+// For now, overwrite if field exists.
+// TODO: Combine type/node cache to a table & use reflection.Schema instead of [byte].
+table ServerStatus {
+  proto_cache:[byte]; 
+  registered_nodes:[nos.fb.Node];
+  node_menu:[nos.fb.NodeMenuEntry];
+  modules:[nos.fb.ModuleState];
+  mother_graph:nos.fb.Node;
+  app_instances:[nos.fb.AppInstanceInfo];
+  known_lists:nos.KnownListsUpdated;
+  license_states:[nos.editor.LicenseState];
+  named_values:[nos.fb.NamedValues];
+  remote_modules:[nos.fb.ModuleIndex];
+  live_mode_enabled:bool;
+}
+
+table ModuleStateUpdate {
+  modules:[nos.fb.ModuleState];
+}
+
+table ModuleStatusMessageUpdate {
+  messages:[nos.fb.ModuleStatusMessage];
+  module_id:nos.fb.ModuleIdentifier;
+}
+
+table UpdateAllModules {
+}
+
+struct ServiceStatistics {
+  bytes_sent:uint64;
+  bytes_rcvd:uint64;
+  messages_sent:uint64;
+  messages_rcvd:uint64;
+}
+
+table EngineMetrics {
+  uptime_ms:uint64; // milliseconds
+  object_count:uint64;
+  connected_app_count:uint64;
+  connected_editor_count:uint64;
+  engine_fps:uint64; // scheduler loops per second
+  avg_scheduler_time_ms:double; // time it takes to do a loop in scheduler (avg over last second) 
+  avg_execution_time_ms:double; // time it takes to execute the node graph (avg over last second)
+  editor_service_stats: ServiceStatistics (native_inline);
+}
+
+table EngineModuleState {
+    status:nos.fb.ModuleStatus;
+    module_path:string; // Path to the binary module
+    version:string;
+    loaded_module_path:string; // Actual cached binary module path that is loaded
+}
+
+table NodeCreated {
+  parent_path:string (required);
+  node:nos.fb.Node;
+}
+
+table NodeDeleted {
+  node_path:string (required);
+}
+
+table CommentUpdated {
+  comment_path:string (required);
+  pos:nos.fb.vec2;
+  size:nos.fb.vec2;
+  bg_color:nos.fb.vec4;
+  content:string;
+  hint:string;
+}
+
+table CommentDeleted {
+  comment_path:string (required);
+}
+
+table PinConnected {
+  connection:nos.fb.Connection;
+}
+
+table PinsWithChangedValues {
+  pin_paths: [string];
+}
+
+table ConnectionRemoved {
+  connection_path:string (required);
+}
+
+table GraphExported
+{
+  request_id:ulong;
+  node_as_json:string;
+}
+
+table NavigateToNode {
+    node_path:string (required);
+}
+
+table LicenseState
+{
+  item_path:string (required);
+  is_licensed:bool;
+  message:string;
+}
+
+table CustomMessage
+{
+  module_name:string (required);
+  message:[ubyte];
+}
+
+table EditorContextMenuUpdate 
+{
+  item_path:string (required);
+  pos:nos.fb.vec2(native_inline);
+  request_id:uint;
+  menu:[ContextMenuItem];
+  has_removable_orphans:bool;
+}
+
+table EditorPinValueChanged {
+  pin_path:string (required);
+  value:[ubyte];
+}
+
+table LoadNodesOnPathsRequest
+{
+    parent_node_path:string (required);
+    child_node_paths:[string];
+}
+
+table PinCreated {
+  node_path:string (required);
+  pin:nos.fb.Pin;
+}
+
+table PinDeleted {
+  pin_path:string (required);
+}
+
+table FunctionCreated {
+  parent_path:string (required);
+  function:nos.fb.Node;
+}
+
+union EditorPartialUpdateUnion {
+	EditorPartialNodeUpdate,
+	EditorPartialPinUpdate,
+}
+
+// Only one will be filled other than item_path
+table EditorPartialItemUpdate {
+  item_path:string (required);
+  update:EditorPartialUpdateUnion;
+  display_name:string;
+  unique_name:string;
+  meta_data_map:[nos.fb.MetaDataEntry];
+  new_license_state:LicenseState;
+}
+
+table NodeInactivityReasonsUpdate
+{
+    new_inactivity_reasons:nos.fb.NodeInactivityReasons;
+    pins_with_missing_types:[nos.fb.UUID];
+}
+
+table EditorPartialNodeUpdate {
+  new_template_parameters:[nos.fb.TemplateParameter];
+  status_messages:[nos.fb.NodeStatusMessage];
+  pos:nos.fb.vec2;
+  app_key:string;
+  new_parent_path:string;
+  new_has_responsive_module:nos.Action(deprecated);
+  orphan_state:nos.fb.NodeOrphanState;
+  new_class_name:string;
+  new_plugin_version:nos.fb.SemVer;
+  inactivity_reasons_update:NodeInactivityReasonsUpdate;
+}
+
+table TypeNameUpdate
+{
+    type_name: string;
+    default_value: [ubyte];
+    min_value: [ubyte];
+    max_value: [ubyte];
+}
+
+table EditorPartialPinUpdate {
+  new_source_id:nos.fb.UUID;
+  type_name_update:TypeNameUpdate;
+  read_only:nos.Action;
+  visualizer:nos.fb.Visualizer;
+  show_as:nos.fb.ShowAs;
+  live:nos.Action;
+  default_value:[ubyte];
+  orphan_state:nos.fb.PinOrphanState;
+}
+
+table ActionStackItem {
+  id:nos.fb.UUID;
+  name:string;
+  description:string;
+}
+
+table UndoRedoStackUpdate {
+    undo_stack:[ActionStackItem];
+    redo_stack:[ActionStackItem];
+}
+
+table AppRegistriesUpdate {
+	app_registries:[nos.fb.AppRegistryEntry];
+}
+
+table AppProcessClosed {
+	app_key:string;
+    return_code:int;
+}
+
+table AppProcessOpened {
+    app_key:string;
+    launch_command:string;
+    launch_time:ulong;
+}

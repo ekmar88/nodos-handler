@@ -1,0 +1,69 @@
+include "Common.fbs";
+
+namespace nos;
+
+enum Action: uint
+{
+    NOP = 0,
+    SET = 1,
+    RESET = 2,
+}
+
+enum ClearFlags : uint(bit_flags) {
+    CLEAR_PINS,
+    CLEAR_NODES,
+    CLEAR_FUNCTIONS,
+    CLEAR_METADATA,
+    CLEAR_TEMPLATE_PARAMETERS,
+    CLEAR_NODESTATUS_MESSAGES,
+    CLEAR_COMMENTS,
+}
+
+table ContextMenuItem {
+  display_name:string;
+  command:uint;
+  content:[ContextMenuItem];
+}
+
+table KnownListsUpdated {
+    updated_lists : [nos.fb.StringList];
+}
+
+table UpdateNamedValues {
+    added_or_updated:[nos.fb.NamedValues];
+    deleted:[string];
+}
+
+table RefreshPortals {
+}
+
+table PartialPinUpdate {
+  pin_id:nos.fb.UUID(native_inline);
+  new_source_id:nos.fb.UUID;
+  orphan_state:nos.fb.PinOrphanState;
+  type_name:string;
+  display_name:string;
+  read_only:Action;
+  visualizer:nos.fb.Visualizer;
+  show_as:nos.fb.ShowAs;
+  live:Action;
+  clear_metadata:bool;
+  meta_data_map:[nos.fb.MetaDataEntry];
+}
+
+table PartialNodeUpdate {
+  node_id:nos.fb.UUID(native_inline);
+  clear:ClearFlags;
+  pins_to_delete:[nos.fb.UUID];
+  pins_to_add:[nos.fb.Pin];
+  functions_to_delete:[nos.fb.UUID];
+  functions_to_add:[nos.fb.Node];
+  nodes_to_delete:[nos.fb.UUID];
+  nodes_to_add:[nos.fb.Node];
+  status_messages:[nos.fb.NodeStatusMessage]; // Overrides previous messages
+  pins_to_update:[PartialPinUpdate];
+  meta_data_map:[nos.fb.MetaDataEntry];
+  orphan_state:nos.fb.NodeOrphanState;
+  template_parameters:[fb.TemplateParameter];
+  display_name:string;
+}
