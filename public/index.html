@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nodos Control Panel</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7385; --line: #e2e5eb;
+    --accent: #3a6df0; --ok: #1f9d55; --bad: #d64545; --warn: #c98a12; --hover: #eef2fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171d; --panel: #1c2028; --text: #e6e9ef; --muted: #8b93a5; --line: #2c323d;
+      --accent: #6e95ff; --ok: #3fbf76; --bad: #ef6b6b; --warn: #e0a83a; --hover: #252b36; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  .badge.ok { color: var(--ok); } .badge.bad { color: var(--bad); } .badge.warn { color: var(--warn); }
+  main { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; height: calc(100vh - 49px); }
+  @media (max-width: 720px) { main { grid-template-columns: 1fr; height: auto; } #list { max-height: 40vh; } }
+  #sidebar { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+  #filter { margin: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+  #list { overflow: auto; flex: 1; }
+  .node { padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .node:hover { background: var(--hover); }
+  .node.active { background: var(--hover); border-left: 3px solid var(--accent); padding-left: 9px; }
+  .node .name { font-weight: 600; }
+  .muted { color: var(--muted); font-size: 12px; word-break: break-all; }
+  #detail { overflow: auto; padding: 16px; min-width: 0; }
+  #detail h2 { margin: 0 0 4px; font-size: 18px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.value { font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+  input[type=text], input[type=number] { width: 100%; max-width: 220px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--text); font: inherit; }
+  .vec { display: flex; gap: 4px; flex-wrap: wrap; } .vec input { width: 80px; }
+  button { padding: 4px 10px; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 4px; cursor: pointer; font: inherit; }
+  button:disabled { opacity: .5; cursor: default; }
+  .flash { animation: flash 0.8s ease-out; }
+  @keyframes flash { from { background: color-mix(in srgb, var(--accent) 25%, transparent); } to { background: transparent; } }
+  .msg { margin-left: 8px; font-size: 12px; } .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nodos Control Panel</h1>
+  <span id="graph-badge" class="badge warn">EditorService…</span>
+  <span id="stream-badge" class="badge warn">Live…</span>
+  <span id="count" class="muted"></span>
+</header>
+<main>
+  <section id="sidebar">
+    <input id="filter" type="search" placeholder="Filtrar por nombre, clase o ruta…" autocomplete="off">
+    <div id="list"><div class="empty">Cargando…</div></div>
+  </section>
+  <section id="detail"><div class="empty">Selecciona un nodo</div></section>
+</main>
+<script>
+const API = '../api';
+let apiKey = '';
+try { apiKey = localStorage.getItem('nodos-api-key') || ''; } catch {}
+let nodes = [];
+let selectedId = null;
+let selectedNode = null;
+
+const $ = (sel) => document.querySelector(sel);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+async function api(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(apiKey ? { 'X-API-Key': apiKey } : {}) };
+  const res = await fetch(`${API}${path}`, { ...options, headers });
+  if (res.status === 401) {
+    const key = prompt('API key requerida (X-API-Key):');
+    if (key) { apiKey = key; try { localStorage.setItem('nodos-api-key', key); } catch {} return api(path, options); }
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body.error || res.statusText), { status: res.status, body });
+  return body;
+}
+
+function setBadge(id, state, text) {
+  const el = $(id);
+  el.className = `badge ${state}`;
+  el.textContent = text;
+}
+
+async function loadNodes() {
+  try {
+    const data = await api('/nodes');
+    nodes = data.nodes;
+    setBadge('#graph-badge', 'ok', 'EditorService conectado');
+    renderList();
+    if (selectedId) {
+      selectedNode = nodes.find(n => n.id === selectedId) || null;
+      renderDetail();
+    }
+  } catch (error) {
+    nodes = [];
+    setBadge('#graph-badge', 'bad', error.status === 503 ? 'Nodos no disponible' : 'Error');
+    $('#list').innerHTML = `<div class="empty">${esc(error.message)}</div>`;
+  }
+}
+
+function renderList() {
+  const q = $('#filter').value.trim().toLowerCase();
+  const shown = nodes.filter(n => !q || [n.name, n.displayName, n.className, n.path].some(v => v?.toLowerCase().includes(q)));
+  $('#count').textContent = `${shown.length}/${nodes.length} nodos`;
+  $('#list').innerHTML = shown.length ? shown.map(n => `
+    <div class="node ${n.id === selectedId ? 'active' : ''}" data-id="${n.id}">
+      <div class="name">${esc(n.displayName || n.name)}</div>
+      <div class="muted">${esc(n.className || '—')} · ${esc(n.path || '')}</div>
+    </div>`).join('') : '<div class="empty">Sin resultados</div>';
+}
+
+function formatValue(value) {
+  if (value === undefined) return '<span class="muted">—</span>';
+  return esc(typeof value === 'object' ? JSON.stringify(value) : String(value));
+}
+
+function editorFor(pin) {
+  const kind = pin.valueKind;
+  if (!pin.editable || !kind) return `<span class="muted">${pin.readOnly ? 'solo lectura' : 'tipo no editable'}</span>`;
+  const v = pin.value;
+  if (kind.kind === 'bool') return `<input type="checkbox" data-pin="${pin.id}" ${v ? 'checked' : ''}>`;
+  if (kind.kind === 'string') return `<input type="text" data-pin="${pin.id}" value="${esc(v ?? '')}"><button data-set="${pin.id}">Set</button>`;
+  const step = kind.integer || kind.scalar === 'int' ? '1' : 'any';
+  if (kind.kind === 'number') {
+    const type = ['long', 'ulong'].includes(kind.scalar) ? 'text' : 'number';
+    return `<input type="${type}" step="${step}" data-pin="${pin.id}" value="${esc(v ?? '')}"><button data-set="${pin.id}">Set</button>`;
+  }
+  return `<div class="vec">${kind.components.map(c => `<input type="number" step="${step}" title="${c}" placeholder="${c}" data-pin="${pin.id}" data-c="${c}" value="${esc(v?.[c] ?? '')}">`).join('')}<button data-set="${pin.id}">Set</button></div>`;
+}
+
+function renderDetail() {
+  const node = selectedNode;
+  if (!node) { $('#detail').innerHTML = '<div class="empty">Selecciona un nodo</div>'; return; }
+  $('#detail').innerHTML = `
+    <h2>${esc(node.displayName || node.name)}</h2>
+    <div class="muted">${esc(node.className)} · ${esc(node.path)} · ${esc(node.id)}</div>
+    <table>
+      <thead><tr><th>Pin</th><th>Tipo</th><th>Valor actual</th><th>Editar</th></tr></thead>
+      <tbody>${node.pins.map(pin => `
+        <tr data-row="${pin.id}">
+          <td><b>${esc(pin.displayName || pin.name)}</b><div class="muted">${esc(pin.name)}</div></td>
+          <td class="muted">${esc(pin.typeName)}</td>
+          <td class="value" data-value="${pin.id}">${formatValue(pin.value)}</td>
+          <td>${editorFor(pin)}<span class="msg" data-msg="${pin.id}"></span></td>
+        </tr>`).join('') || '<tr><td colspan="4" class="empty">Este nodo no tiene pines</td></tr>'}
+      </tbody>
+    </table>`;
+}
+
+function readEditor(pin) {
+  const inputs = [...document.querySelectorAll(`[data-pin="${pin.id}"]`)];
+  const kind = pin.valueKind;
+  if (kind.kind === 'bool') return inputs[0].checked;
+  if (kind.kind === 'string') return inputs[0].value;
+  if (kind.kind === 'number') {
+    const raw = inputs[0].value.trim();
+    return ['long', 'ulong'].includes(kind.scalar) ? raw : Number(raw);
+  }
+  // Vectors: send only filled components; PATCH merges the rest.
+  return Object.fromEntries(inputs.filter(i => i.value !== '').map(i => [i.dataset.c, Number(i.value)]));
+}
+
+async function writePin(pinId) {
+  const pin = selectedNode?.pins.find(p => p.id === pinId);
+  if (!pin) return;
+  const msg = document.querySelector(`[data-msg="${pinId}"]`);
+  msg.className = 'msg'; msg.textContent = '…';
+  try {
+    const result = await api(`/nodes/${selectedNode.id}/pin/${pinId}`, { method: 'PATCH', body: JSON.stringify({ value: readEditor(pin) }) });
+    pin.value = result.value;
+    msg.className = 'msg ok'; msg.textContent = '✓ confirmado';
+    updateValue(pinId, result.value);
+  } catch (error) {
+    msg.className = 'msg bad'; msg.textContent = error.message;
+  }
+}
+
+function updateValue(pinId, value) {
+  const cell = document.querySelector(`[data-value="${pinId}"]`);
+  if (!cell) return;
+  cell.innerHTML = formatValue(value);
+  cell.classList.remove('flash'); void cell.offsetWidth; cell.classList.add('flash');
+  // Refresh editor inputs unless the user is typing in them.
+  const inputs = document.querySelectorAll(`[data-pin="${pinId}"]`);
+  if ([...inputs].includes(document.activeElement)) return;
+  for (const input of inputs) {
+    if (input.type === 'checkbox') input.checked = Boolean(value);
+    else if (input.dataset.c) input.value = value?.[input.dataset.c] ?? '';
+    else input.value = value ?? '';
+  }
+}
+
+$('#list').addEventListener('click', (e) => {
+  const item = e.target.closest('.node');
+  if (!item) return;
+  selectedId = item.dataset.id;
+  selectedNode = nodes.find(n => n.id === selectedId) || null;
+  renderList();
+  renderDetail();
+});
+$('#detail').addEventListener('click', (e) => {
+  const id = e.target.dataset?.set;
+  if (id) writePin(id);
+});
+$('#detail').addEventListener('change', (e) => {
+  if (e.target.type === 'checkbox' && e.target.dataset.pin) writePin(e.target.dataset.pin);
+});
+$('#detail').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.dataset?.pin) writePin(e.target.dataset.pin);
+});
+$('#filter').addEventListener('input', renderList);
+
+let reloadTimer = null;
+function scheduleReload() {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(loadNodes, 200);
+}
+
+function connectEvents() {
+  const url = `${API}/events${apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''}`;
+  const source = new EventSource(url);
+  source.onopen = () => setBadge('#stream-badge', 'ok', 'En vivo');
+  source.onerror = () => setBadge('#stream-badge', 'bad', 'Sin stream (reintentando)');
+  source.addEventListener('status', (e) => {
+    const s = JSON.parse(e.data);
+    setBadge('#graph-badge', s.graph_ready ? 'ok' : 'bad', s.graph_ready ? 'EditorService conectado' : 'Nodos no disponible');
+    scheduleReload();
+  });
+  source.addEventListener('graph', scheduleReload);
+  source.addEventListener('pin', (e) => {
+    const event = JSON.parse(e.data);
+    const node = nodes.find(n => n.id === event.node_id);
+    const pin = node?.pins.find(p => p.id === event.pin_id);
+    if (pin) pin.value = event.value;
+    if (event.node_id === selectedId) updateValue(event.pin_id, event.value);
+  });
+}
+
+loadNodes().then(connectEvents);
+</script>
+</body>
+</html>

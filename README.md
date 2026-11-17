@@ -1,272 +1,218 @@
 # Nodos Backend API
 
-Express.js backend that communicates with [Nodos](https://nodos.dev/) via gRPC to control node properties in a running Nodos instance.
+Express backend to browse and control a running [Nodos](https://nodos.dev/)
+instance: list nodes, read pin/property values, change them, and receive
+changes in real time. It talks to Nodos over gRPC with FlatBuffers messages.
 
 ## Architecture
 
 ```
-nodos-backend/
-├── config/
-│   └── default.js          # Configuration (Nodos address, server port)
-├── proto/
-│   └── nodos_app.proto     # gRPC service definitions for Nodos App Service
-├── src/
-│   ├── app.js              # Express application entry point
-│   ├── controllers/
-│   │   └── nodes.controller.js   # Business logic for node operations
-│   ├── lib/
-│   │   └── nodos-client.js       # gRPC client for Nodos communication
-│   ├── middlewares/
-│   │   └── index.js                # Request logging, error handling
-│   ├── models/
-│   │   └── nodos-nodes.js          # Node type models (Location, Double, String, Bool)
-│   └── routes/
-│       └── index.js                # API route definitions
-├── .gitignore
-├── package.json
-└── README.md
+config/default.js                 Configuration (env vars / .env)
+public/index.html                 Web control panel (served at /panel/)
+scripts/probe-ports.js            Diagnostic: probe Nodos service ports
+src/
+├── app.js                        Entry point: clients, reconnection, HTTP server
+├── create-app.js                 Express app factory (used by tests too)
+├── controllers/
+│   ├── nodes.controller.js       Node/pin reads and writes
+│   └── events.controller.js      Server-Sent Events stream
+├── lib/
+│   ├── nodos-graph-client.js     EditorService client (graph, values, writes)
+│   ├── nodos-client.js           AppService client (PinDirtied)
+│   ├── editor-protocol.js        EditorService FlatBuffers codec
+│   ├── pin-values.js             Pin value encoding/decoding/merging
+│   ├── fb-extract.js             FlatBuffers Node/Pin -> plain objects
+│   ├── reconnect.js              Automatic reconnection with backoff
+│   └── logger.js                 Leveled logger (LOG_LEVEL)
+├── middlewares/index.js          Logging, JSON, CORS, API key, errors
+└── routes/index.js               Route table
+sdk/                              Nodos SDK schemas (.fbs) and generated JS
+test/                             node:test suites (no running Nodos needed)
 ```
 
-## Supported Node Types
+### How it talks to Nodos
 
-| Type | Display Name | Description | Pins |
-|------|-------------|-------------|------|
-| `location` | Location | 3D vector (vec3) | `x`, `y`, `z` (double) |
-| `double` | Double | Floating point value | `value` (double) |
-| `string` | String | Text value | `value` (string) |
-| `bool` | Bool | Boolean value | `value` (bool) |
+| Service | Port | Used for |
+|---------|------|----------|
+| EditorService (`/nos.editor.EditorService/Connect`) | 50052 | Graph snapshot, structural events, `WatchPin` values, pin writes |
+| AppService (`/nos.app.AppService/Connect`) | 50053 | `PinDirtied` only (optional) |
+
+The backend keeps **one persistent EditorService stream** open:
+
+1. On connect, Nodos sends a `ServerStatus` snapshot with the whole graph
+   (`mother_graph`), including nested graphs and functions.
+2. Node created/deleted/renamed and pin created/deleted/changed events keep
+   that graph current.
+3. Every pin is subscribed with `WatchPin`, so value changes arrive as events.
+
+Reads (`GET`) are served from that live state, so they are fast and do not
+open new connections. A new snapshot (a short-lived second stream) is fetched
+only when:
+
+- Nodos reported that a value changed but the new value has not arrived yet;
+- the request asks for it with `?fresh=true` (or `NODOS_READ_MODE=fresh`);
+- the background resync runs (`NODOS_RESYNC_MS`, default 10 s), which
+  covers any missed events;
+- a write needs confirmation and the watched value event did not arrive.
+
+If Nodos stops or restarts, both connections **reconnect automatically**
+with exponential backoff. Meanwhile, graph endpoints answer `503`.
 
 ## Prerequisites
 
-- **Node.js** 20.12 or later 
-- **Nodos** running (nodos.exe on Windows)
+- **Node.js** 20.12 or later
+- **Nodos** running, with its EditorService reachable on `NODOS_HOST:50052`
 
-## Installation
+## Installation and running
 
 ```bash
-# Install dependencies
 npm install
-
-# (Optional) Generate gRPC stubs from proto file
-# Requires: grpc-tools
-# npm install -g grpc-tools
-# npm run proto:generate
+cp .env.example .env   # optional; adjust NODOS_HOST etc.
+npm start              # or: npm run dev (auto-reload)
 ```
+
+Open the control panel at <http://localhost:3000/panel/>.
 
 ## Configuration
 
-The `.env` file is optional when using the default values or environment variables.
-To keep machine-specific settings local, copy `.env.example` to `.env`:
-
-```bash
-cp .env.example .env
-```
-
-Set `NODOS_HOST` in `.env` to the address of the machine running Nodos. For
-WSL connecting to a Windows-hosted engine, use the host address reachable from
-your WSL instance. `.env` is ignored by Git; do not commit actual host addresses
-or credentials. The app loads the file at startup, and variables already set in
-the environment take precedence. Restart the backend after editing it.
-
-Available settings:
+Variables already set in the environment take precedence over `.env`.
+`.env` is git-ignored; do not commit real host addresses or keys.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NODOS_HOST` | `127.0.0.1` | Nodos engine host |
-| `NODOS_PORT` | `50053` | Nodos App service port |
-| `NODOS_EDITOR_PORT` | `50052` | Nodos Editor service port (graph discovery) |
-| `NODOS_APP_KEY` | `nodos-backend-app` | Application identifier |
-| `NODOS_APP_NAME` | `Nodos Backend Controller` | Display name in Nodos |
-| `PORT` | `3000` | Express server port |
-| `HOST` | `127.0.0.1` | Express server bind address |
+| `NODOS_HOST` | `127.0.0.1` | Machine running Nodos (for WSL, the Windows host address) |
+| `NODOS_EDITOR_PORT` | `50052` | EditorService port |
+| `NODOS_PORT` | `50053` | AppService port |
+| `NODOS_APP_SERVICE` | `true` | Set `false` to skip the AppService connection |
+| `NODOS_APP_KEY` / `NODOS_APP_NAME` | | Identity shown in Nodos |
+| `NODOS_READ_MODE` | `cache` | `cache` (live stream) or `fresh` (snapshot per read) |
+| `NODOS_RESYNC_MS` | `10000` | Background resync interval; `0` disables |
+| `NODOS_RECONNECT_MIN_MS` / `_MAX_MS` | `1000` / `30000` | Reconnection backoff |
+| `HOST` / `PORT` | `127.0.0.1` / `3000` | HTTP bind address |
+| `API_KEY` | *(empty)* | When set, `/api/*` requires `X-API-Key` (or `?api_key=`) |
+| `CORS_ORIGIN` | `*` | `Access-Control-Allow-Origin` value |
+| `LOG_LEVEL` | `info` | `debug` shows engine pin paths and unhandled events |
 
-Graph discovery uses `/nos.editor.EditorService/Connect` on port `50052`.
-The App service on `50053` integrates a process as its own node; it does not
-provide the complete graph. Changing `NODOS_PORT` to `50052` is insufficient,
-because the two services use different protocols.
-
-`GET /api/nodes` requests a fresh `ServerStatus.mother_graph` snapshot from
-EditorService for each read. Concurrent reads share an in-flight snapshot. It includes nested graph nodes and functions, excluding the
-mother graph container and the registered node class catalogue. Until a graph
-snapshot arrives, or after disconnection, graph reads return HTTP `503`.
-`GET /api/nodes/status` exposes `graph_connected`, `graph_ready`,
-`editor_address`, and `graph_error` for diagnosis. `graph_paths` additionally
-shows observed engine paths and whether each pin path comes from an engine
-event or is inferred from snapshot names. Unambiguous engine-supplied paths
-are preserved verbatim for watches and writes across snapshot refreshes.
-For unresolved paths, read-only watches test relative, root-qualified, and UUID
-addresses. A write waits up to two seconds for the engine to report a matching,
-unambiguous pin path; otherwise it returns `503` without sending a mutation.
-`graph_paths.engine_version` and `root_name` aid SDK/path diagnosis.
-If a write is not confirmed, change that pin manually once and inspect
-`GET /api/nodes/status` to verify the path reported by the engine.
-
-For a remote engine or WSL, `NODOS_HOST` must point to the machine running
-Nodos, and its Editor service must be reachable on `NODOS_EDITOR_PORT`.
-After changing these settings, restart the backend. This client does not
-reconnect automatically after a stream failure.
-
-The API binds to loopback by default. Set `HOST=0.0.0.0` only when it must be
-reachable from other machines and access is restricted appropriately: the API
-does not currently authenticate callers and permits cross-origin requests.
-
-## Running
-
-```bash
-# Production
-npm start
-
-# Development (with auto-reload)
-npm run dev
-```
-
-## API Endpoints
-
-### Health Check
-```
-GET /health
-```
-
-### Nodos Connection Status
-```
-GET /api/nodes/status
-```
-
-### List and inspect nodes
-
-```text
-GET /api/nodes
-GET /api/nodes/:nodeId
-GET /api/nodes/class/:className
-```
-
-Copy a node's `id` from the list response. `GET /api/nodes/:nodeId` returns
-its metadata and actual pins, including `id`, `name`, `typeName`, `readOnly`,
-and `value` when Nodos has supplied a supported value. UUID matching accepts
-uppercase letters and omitted hyphens. Unique node names are also accepted;
-ambiguous names return `409` and require a UUID.
-
-### Update a pin or property
-
-```text
-POST /api/nodes/:nodeId/pin/:pinId
-```
-
-Use the actual pin UUID from the node response, or its unique name. Properties
-are pins too. The declared `typeName` determines the wire format; there is no
-`:type` URL segment and the backend never generates a pin UUID.
-
-```bash
-curl http://localhost:3000/api/nodes/YOUR_NODE_UUID
-
-curl -X POST http://localhost:3000/api/nodes/YOUR_NODE_UUID/pin/YOUR_PIN_UUID \
-  -H 'Content-Type: application/json' \
-  -d '{"value": 42.0}'
-```
-
-For `bool`, use JSON `true` or `false`; for `string`, use a JSON string.
-Vectors require every component, e.g. `{"value":{"x":1,"y":2,"z":3}}`
-for `nos.fb.vec3`. An individual pin named `x` is encoded using its declared
-scalar type, rather than being treated as an entire vector. The backend supports
-FlatBuffers scalars and the `vec2`, `vec3`, `vec4` families declared in
-`Builtins.fbs`. Complex/resource types return `422`. Send 64-bit integers as
-decimal strings when they exceed JavaScript's safe integer range.
-
-Writes use EditorService, read the values back from Nodos, and return HTTP
-`200` only when the engine reports the requested values, for example:
-
-```json
-{
-  "success": true,
-  "message": "Pin update confirmed by Nodos",
-  "node_id": "actual-node-uuid",
-  "pin_id": "actual-pin-uuid",
-  "pin": "value",
-  "value": 42,
-  "type": "double",
-  "status": "confirmed"
-}
-```
-
-`confirmed` means an engine readback matched the requested value. If the
-engine does not report the change, the API returns `502` with the actual value
-rather than reporting a successful stream submission. Multi-pin writes are not
-transactional: a failed confirmation does not roll back pins already changed.
-
-Read the current engine value with:
-
-```text
-GET /api/nodes/:nodeId/pin/:pinId/current-value
-```
-
-List, node, class, and current-value reads request a new engine snapshot and
-return `Cache-Control: no-store`. If the snapshot cannot be obtained, they
-return `503` rather than serving old cached values. A missing/unsupported pin
-value returns `404` from the current-value endpoint.
-
-The persistent connection also subscribes with `WatchPin` to each pin at a
-nonzero update frequency. Watches follow additions, deletions, and renames.
-Only snapshots and value events received from Nodos change the stored values;
-a write request never substitutes its desired value for the engine's value.
-A new gRPC connection per fresh read has a latency/connection cost; this is
-intentional so HTTP reads do not depend solely on asynchronous notifications.
-
-### Update multiple pins
-
-```text
-POST /api/nodes/:nodeId/pins
-```
-
-Body: `{"pins":{"YOUR_PIN_UUID":42,"enabled":true}}`.
-The backend validates every pin before sending one Editor `BatchRequest`.
-The engine processes that batch; the API does not promise transactional rollback.
-
-Invalid values return `400`, absent nodes/pins return `404`, ambiguous names
-or read-only pins return `409`, unsupported types return `422`, and unavailable
-graph connections return `503`.
-
-### Mark an application pin dirty
-
-```text
-POST /api/nodes/:nodeId/dirty
-```
-
-Body: `{"pin":"YOUR_PIN_UUID"}`. This separate operation uses AppService
-and requires its connection; it is not needed for ordinary Editor pin writes.
-
-## Nodos setup
-
-Start Nodos and make its Editor service reachable at `NODOS_HOST:50052`.
-If needed, override the address at launch:
+If Nodos uses a different address, override it at launch:
 
 ```bash
 nosLauncher --override-settings connection_settings/node_graph_service_address="0.0.0.0:50052"
 ```
 
-AppService uses port `50053` separately. Graph reads and ordinary pin writes
-use EditorService and can work without an AppService connection.
+**Security:** the API binds to loopback by default. If you set
+`HOST=0.0.0.0`, also set `API_KEY`, because anyone who can reach the API can
+change pins.
+
+## API
+
+Nodes and pins can be referenced by UUID (any case, hyphens optional), by
+unique name/display name, or nodes by their path (URL-encoded, e.g.
+`%2FGroup.Transform`). Ambiguous names return `409`.
+
+### Reading
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Liveness; includes `graph_ready` |
+| `GET /api/status` | Connection state and path diagnostics (also `/api/nodes/status`) |
+| `GET /api/nodes` | All nodes with pins. Filters: `name` (substring), `class`, `path` (prefix), `pins=false` (summary only), `fresh=true` |
+| `GET /api/graph` | Nodes as a nested tree (no pins) |
+| `GET /api/nodes/:nodeId` | One node with its pins |
+| `GET /api/nodes/class/:className` | Nodes of one class |
+| `GET /api/nodes/:nodeId/pins/:pinId` | One pin: metadata and value |
+| `GET /api/nodes/:nodeId/pin/:pinId/current-value` | Just the value (`404` if not decodable) |
+
+Each node includes `id`, `name`, `displayName`, `className`, `path` and
+`parentId`. Each pin includes `id`, `name`, `typeName`, `readOnly`,
+`editable`, `valueKind` (how to send its value) and `value` when known.
+
+```bash
+curl "http://localhost:3000/api/nodes?name=transform&pins=false"
+curl http://localhost:3000/api/nodes/YOUR_NODE_UUID
+```
+
+### Writing
+
+| Endpoint | Body | Semantics |
+|----------|------|-----------|
+| `POST /api/nodes/:nodeId/pin/:pinId` | `{"value": …}` | Replace the value |
+| `PATCH /api/nodes/:nodeId/pin/:pinId` | `{"value": …}` | Like POST, but vectors may be partial: `{"value":{"x":5}}` |
+| `POST /api/nodes/:nodeId/pins` | `{"pins": {"<pin>": value, …}}` | Several pins in one batch |
+| `PATCH /api/nodes/:nodeId/pins` | `{"pins": {…}}` | Batch with partial vectors |
+| `POST /api/nodes/:nodeId/dirty` | `{"pin": "<pin>"}` | Mark a pin dirty (needs AppService) |
+
+```bash
+curl -X POST http://localhost:3000/api/nodes/YOUR_NODE/pin/Gain \
+  -H 'Content-Type: application/json' -d '{"value": 0.5}'
+
+curl -X PATCH http://localhost:3000/api/nodes/YOUR_NODE/pin/Position \
+  -H 'Content-Type: application/json' -d '{"value": {"y": 2}}'
+```
+
+Value formats follow the pin's declared `typeName`:
+
+- `bool`: `true`/`false`. `string`: a JSON string.
+- Numbers: `float`, `double`, `byte`… `ulong`, range-checked for their width.
+  Send 64-bit integers beyond JavaScript's safe range as decimal strings.
+- Vectors (`vec2`, `vec3`, `vec4`, and the `d`/`i`/`u`/`u8` variants):
+  an object with `x`, `y`, `z`, `w` as applicable.
+- Complex/resource types (textures, etc.) return `422`.
+
+Every write is validated before anything is sent. The response is `200` only
+once **Nodos reports the requested value back**:
+
+```json
+{ "success": true, "message": "Pin update confirmed by Nodos",
+  "node_id": "…", "pin_id": "…", "pin": "Gain", "value": 0.5,
+  "type": "double", "status": "confirmed" }
+```
+
+If Nodos does not confirm, the response is `502` with the engine's actual
+value. Batches are sent as one Editor `BatchRequest` but are not
+transactional: no rollback happens if one pin is not confirmed.
+
+Errors: `400` invalid value, `404` node/pin not found, `409` ambiguous name,
+read-only pin, or partial vector without a known current value, `422`
+unsupported type, `503` Nodos unavailable or pin path not yet reported.
+
+### Real-time events
+
+`GET /api/events` is a [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events)
+stream. Use `?node=<uuid|name|path>` to receive pin events for one node only.
+
+| Event | Data |
+|-------|------|
+| `status` | `{graph_ready, app_connected, graph_error}` on open and on (dis)connection |
+| `graph` | `{reason}` when the graph structure changes (reload your node list) |
+| `pin` | `{node_id, node_name, node_path, pin_id, pin, value, type}` when a value changes |
+
+```js
+const events = new EventSource('http://localhost:3000/api/events');
+events.addEventListener('pin', e => console.log(JSON.parse(e.data)));
+```
+
+## Pin paths (diagnostics)
+
+Nodos addresses pins by path for watches and writes. The backend infers
+`/Node.Pin` (or `/Parent.Child.Pin`) from the snapshot and, before the
+first write to a pin, waits up to 2 s for Nodos to confirm a valid path in
+response to read-only `WatchPin` requests. No mutation is sent to an
+unconfirmed path.
+
+If writes return `503 … has not reported a valid path`, run with
+`LOG_LEVEL=debug`, change the pin once in the Nodos editor, and check
+`graph_paths.observed_paths` in `GET /api/status` to see the path format your
+Nodos version uses.
 
 ## Development
 
 ```bash
-# Install dev dependencies
-npm install
-
-# Run with nodemon (auto-reload)
-npm run dev
-
-# Lint (add your linter)
-# npm run lint
+npm test        # node:test suites with simulated gRPC streams; no Nodos needed
+npm run dev     # auto-reload
+npm run probe   # check which Nodos service ports respond
 ```
 
 ## License
 
-No project license has been specified. Verify redistribution rights for the bundled Nodos SDK schemas and generated files before publishing.
-
-## Tests
-
-```bash
-npm test
-```
-
-Tests use FlatBuffers snapshots and simulated gRPC streams; a running Nodos engine is not required.
+No project license has been specified. Verify redistribution rights for the
+bundled Nodos SDK schemas and generated files before publishing.

@@ -3,11 +3,11 @@
  */
 import grpc from '@grpc/grpc-js';
 import * as flatbuffers from 'flatbuffers';
-import config from './config/default.js';
-import { AppEvent } from './sdk/generated/js/nos/app/app-event.js';
-import { AppEventUnion } from './sdk/generated/js/nos/app/app-event-union.js';
-import { AppConnectionRequest } from './sdk/generated/js/nos/app/app-connection-request.js';
-import { SemVer } from './sdk/generated/js/nos/fb/sem-ver.js';
+import config from '../config/default.js';
+import { AppEvent } from '../sdk/generated/js/nos/app/app-event.js';
+import { AppEventUnion } from '../sdk/generated/js/nos/app/app-event-union.js';
+import { AppConnectionRequest } from '../sdk/generated/js/nos/app/app-connection-request.js';
+import { SemVer } from '../sdk/generated/js/nos/fb/sem-ver.js';
 
 const host = config.nodos.host;
 const ports = [50051, 50052, 50053];

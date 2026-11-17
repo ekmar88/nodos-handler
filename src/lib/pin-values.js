@@ -28,6 +28,31 @@ function layout(typeName) {
   throw new ApiError(422, `Unsupported pin type: ${typeName}. No value was sent.`);
 }
 
+/** Describe how a pin type maps to JSON, or null when it cannot be edited as JSON. */
+export function pinValueKind(typeName) {
+  try {
+    const { type, scalar, keys } = layout(typeName);
+    if (keys) return { kind: 'vector', scalar, components: keys };
+    if (type === 'bool' || type === 'string') return { kind: type };
+    return { kind: 'number', scalar, integer: !['float', 'double'].includes(scalar) };
+  } catch {
+    return null;
+  }
+}
+
+/** Merge a partial vector (e.g. {x: 5}) into the current value; other values pass through. */
+export function mergePinValue(partial, current, typeName) {
+  const kind = pinValueKind(typeName);
+  if (kind?.kind !== 'vector' || !partial || typeof partial !== 'object' || Array.isArray(partial)) return partial;
+  const unknown = Object.keys(partial).filter(k => !kind.components.includes(k));
+  if (unknown.length) throw new ApiError(400, `${typeName} has no component(s): ${unknown.join(', ')}`);
+  if (kind.components.every(k => Object.hasOwn(partial, k))) return partial;
+  if (!current || typeof current !== 'object') {
+    throw new ApiError(409, 'Current value is unknown, so a partial update cannot be applied; send all components');
+  }
+  return Object.fromEntries(kind.components.map(k => [k, Object.hasOwn(partial, k) ? partial[k] : current[k]]));
+}
+
 function scalarValue(value, type) {
   const [, , min, max] = scalars[type];
   if (type === 'long' || type === 'ulong') {

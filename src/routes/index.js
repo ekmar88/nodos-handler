@@ -1,74 +1,30 @@
-/**
- * Routes
- * Mounts all API route handlers
- */
-
+/** API routes (mounted under /api). Static segments are declared before :nodeId. */
 import express from 'express';
-import * as nodesController from '../controllers/nodes.controller.js';
+import * as nodes from '../controllers/nodes.controller.js';
+import { streamEvents } from '../controllers/events.controller.js';
 
 const router = express.Router();
 
-// ============================================================
-// Node operations (BEFORE /:type catch-all)
-// ============================================================
+// Live updates (Server-Sent Events)
+router.get('/events', streamEvents);
 
-// Update a single pin value
-// POST /api/nodes/:nodeId/pin/:pinId
-// Body: { "value": ... }
-router.post(
-  '/nodes/:nodeId/pin/:pinId',
-  nodesController.updatePinValue
-);
+// Graph overview
+router.get('/status', nodes.getStatus);
+router.get('/graph', nodes.getGraphTree);
 
-// Update multiple pins at once
-// POST /api/nodes/:nodeId/pins
-// Body: { "pins": { ... } }
-router.post(
-  '/nodes/:nodeId/pins',
-  nodesController.updateMultiplePins
-);
+// Nodes
+router.get('/nodes', nodes.listNodes);
+router.get('/nodes/status', nodes.getStatus);
+router.get('/nodes/class/:className', nodes.getNodesByClassName);
+router.get('/nodes/:nodeId', nodes.getNodeById);
 
-// Mark a pin as dirty
-// POST /api/nodes/:nodeId/dirty
-// Body: { "pin": "value" }
-router.post(
-  '/nodes/:nodeId/dirty',
-  nodesController.dirtyPin
-);
-
-// Get the current value of a pin
-// GET /api/nodes/:nodeId/pin/:pinId/current-value
-router.get(
-  '/nodes/:nodeId/pin/:pinId/current-value',
-  nodesController.getPinValue
-);
-
-// List all discovered nodes from Nodos
-// GET /api/nodes
-router.get(
-  '/nodes',
-  nodesController.listNodes
-);
-
-// Check Nodos connection status (MUST come before /:nodeId)
-// GET /api/nodes/status
-router.get(
-  '/nodes/status',
-  nodesController.getStatus
-);
-
-// Get nodes by class name (e.g., double, string, bool, location) (MUST come before /:nodeId)
-// GET /api/nodes/class/:className
-router.get(
-  '/nodes/class/:className',
-  nodesController.getNodesByClassName
-);
-
-// Get a node by ID or name
-// GET /api/nodes/:nodeId
-router.get(
-  '/nodes/:nodeId',
-  nodesController.getNodeById
-);
+// Pins (properties are pins too)
+router.get('/nodes/:nodeId/pins/:pinId', nodes.getPin);
+router.get('/nodes/:nodeId/pin/:pinId/current-value', nodes.getPinValue);
+router.post('/nodes/:nodeId/pin/:pinId', nodes.updatePinValue);
+router.patch('/nodes/:nodeId/pin/:pinId', nodes.patchPinValue);
+router.post('/nodes/:nodeId/pins', nodes.updateMultiplePins);
+router.patch('/nodes/:nodeId/pins', nodes.patchMultiplePins);
+router.post('/nodes/:nodeId/dirty', nodes.dirtyPin);
 
 export default router;

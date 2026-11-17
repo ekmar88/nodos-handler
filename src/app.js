@@ -1,148 +1,50 @@
 /**
- * Nodos Backend — Express Application
- * 
- * A REST API backend that communicates with Nodos via gRPC
- * to control node properties in a running Nodos instance.
- * 
- * Supported node types:
- *   - Location (vec3) — 3D vector with x, y, z pins
- *   - Double (double) — floating point value
- *   - String (string) — text value
- *   - Bool (bool) — boolean value
+ * Nodos Backend — entry point.
+ *
+ * Starts the HTTP API immediately and keeps the Nodos connections alive in
+ * the background (automatic reconnection with backoff), so the API reports
+ * 503 while Nodos is down and recovers on its own when it comes back.
  */
-
-import express from 'express';
 import config from '../config/default.js';
-import routes from './routes/index.js';
-import {
-  requestLogger,
-  jsonParser,
-  errorHandler,
-  notFoundHandler,
-} from './middlewares/index.js';
+import logger from './lib/logger.js';
 import { NodosClient } from './lib/nodos-client.js';
 import { NodosGraphClient } from './lib/nodos-graph-client.js';
-import * as nodesController from './controllers/nodes.controller.js';
+import { keepConnected } from './lib/reconnect.js';
+import { createApp } from './create-app.js';
 
-// ============================================================
-// Initialize Express app
-// ============================================================
-const app = express();
+const log = logger.child('server');
+const { nodos, server } = config;
 
-// ============================================================
-// Middleware
-// ============================================================
-app.use(requestLogger);
-app.use(jsonParser);
+const graphClient = new NodosGraphClient({ host: nodos.host, port: nodos.editorPort, appName: nodos.appName });
+const appClient = nodos.appServiceEnabled
+  ? new NodosClient({ host: nodos.host, port: nodos.port, appKey: nodos.appKey, appName: nodos.appName })
+  : null;
 
-// Enable CORS for frontend development
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+const reconnect = { minDelay: nodos.reconnectMinMs, maxDelay: nodos.reconnectMaxMs };
+const keepers = [keepConnected(graphClient, { name: `EditorService ${nodos.host}:${nodos.editorPort}`, ...reconnect })];
+if (appClient) keepers.push(keepConnected(appClient, { name: `AppService ${nodos.host}:${nodos.port}`, ...reconnect }));
+graphClient.startResync(nodos.resyncMs);
+
+const app = createApp({ appClient, graphClient });
+const httpServer = app.listen(server.port, server.host, () => {
+  const base = `http://${server.host === '0.0.0.0' ? 'localhost' : server.host}:${server.port}`;
+  log.info(`Listening on ${base} (read mode: ${nodos.readMode}, resync: ${nodos.resyncMs || 'off'} ms)`);
+  log.info(`Panel: ${base}/panel/   API: ${base}/api/nodes   Events: ${base}/api/events`);
+  if (server.host !== '127.0.0.1' && server.host !== 'localhost' && !server.apiKey) {
+    log.warn('API is reachable from other machines without API_KEY; anyone on the network can change pins.');
   }
-  next();
 });
 
-// ============================================================
-// Routes
-// ============================================================
-
-// Health check (BEFORE /api routes)
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'nodos-backend',
-  });
-});
-
-// API routes
-app.use('/api', routes);
-
-// Root endpoint
-app.get('/', (_req, res) => {
-  res.json({
-    service: 'Nodos Backend API',
-    version: '1.0.0',
-    description: 'Express backend to control Nodos node properties via gRPC',
-    endpoints: {
-      health: 'GET /health',
-      status: 'GET /api/nodes/status',
-      listNodes: 'GET /api/nodes',
-      getNode: 'GET /api/nodes/:nodeId',
-      getNodesByClass: 'GET /api/nodes/class/:className',
-      updatePin: 'POST /api/nodes/:nodeId/pin/:pinId',
-      updatePins: 'POST /api/nodes/:nodeId/pins',
-      dirtyPin: 'POST /api/nodes/:nodeId/dirty',
-      getPinValue: 'GET /api/nodes/:nodeId/pin/:pinId/current-value',
-    },
-  });
-});
-
-// ============================================================
-// Error handling
-// ============================================================
-app.use(notFoundHandler);
-app.use(errorHandler);
-
-// ============================================================
-// Start server and connect to Nodos
-// ============================================================
-async function start() {
-  console.log('='.repeat(60));
-  console.log('  Nodos Backend API');
-  console.log('='.repeat(60));
-
-  // Connect to Nodos
-  console.log(`\n[1/2] Connecting to Nodos at ${config.nodos.host}:${config.nodos.port}...`);
-  const nodosClient = new NodosClient({
-    host: config.nodos.host,
-    port: config.nodos.port,
-    appKey: config.nodos.appKey,
-    appName: config.nodos.appName,
-  });
-
-  const graphClient = new NodosGraphClient({
-    host: config.nodos.host,
-    port: config.nodos.editorPort,
-    appName: config.nodos.appName,
-  });
-  nodesController.initialize(nodosClient, graphClient);
-  const connections = await Promise.allSettled([
-    nodosClient.connect(),
-    graphClient.connect(),
-  ]);
-  for (const [index, result] of connections.entries()) {
-    const service = index === 0 ? 'AppService' : 'EditorService';
-    if (result.status === 'rejected') {
-      console.warn(`[${service}] ${result.reason.message}`);
-    } else {
-      console.log(`[${service}] Connected${index === 1 ? `; ${graphClient.getNodes().length} graph nodes` : ''}`);
-    }
-  }
-
-  // Start Express server
-  app.listen(config.server.port, config.server.host, () => {
-    console.log('\n' + '='.repeat(60));
-    console.log(`  Server running at http://${config.server.host === '0.0.0.0' ? 'localhost' : config.server.host}:${config.server.port}`);
-    console.log(`  API base:     http://localhost:${config.server.port}/api`);
-    console.log('='.repeat(60));
-    console.log('\n  Quick start:');
-    console.log(`    curl http://localhost:${config.server.port}/api/health`);
-    console.log(`    curl http://localhost:${config.server.port}/api/nodes`);
-    console.log(`    curl -X POST http://localhost:${config.server.port}/api/nodes/YOUR_NODE_ID/pin/YOUR_PIN_ID \\`);
-    console.log(`      -H "Content-Type: application/json" \\`);
-    console.log(`      -d '{"value": 42.0}'`);
-    console.log('='.repeat(60) + '\n');
-  });
+function shutdown(signal) {
+  log.info(`${signal} received, shutting down`);
+  for (const keeper of keepers) keeper.stop();
+  graphClient.close();
+  appClient?.disconnect();
+  httpServer.close(() => process.exit(0));
+  // SSE connections stay open; do not wait for them forever.
+  setTimeout(() => process.exit(0), 2000).unref();
 }
-
-start().catch((error) => {
-  console.error('Failed to start server:', error);
-  process.exit(1);
-});
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 export default app;

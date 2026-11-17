@@ -96,9 +96,9 @@ function transport(t, { ignoreWrites = false, expectedPath = '/Make.Value' } = {
   });
   return { requests, connections, manualChange(n) { value = n; } };
 }
-async function invoke(handler, body) {
+async function invoke(handler, body, query = {}) {
   const response = { code: 200, headers: {}, status(n) { this.code = n; return this; }, set(k, v) { this.headers[k] = v; }, json(body) { this.body = body; } };
-  await handler({ params: { nodeId, pinId }, body }, response);
+  await handler({ params: { nodeId, pinId }, body, query }, response);
   return response;
 }
 
@@ -122,19 +122,55 @@ test('snapshot subscribes to actual pin paths without the mother graph name; man
   c.disconnect();
 });
 
-test('GET reads a new engine snapshot after manual changes even without value events; a failed refresh is not stale success', async t => {
+test('GET ?fresh=true reads a new engine snapshot even without value events; a failed forced refresh is not stale success', async t => {
   const engine = transport(t);
   const c = new NodosGraphClient();
   await c.connect();
   initialize(null, c);
-  assert.equal((await invoke(listNodes)).body.nodes[0].pins[0].value, 0);
+  const fresh = { fresh: 'true' };
+  assert.equal((await invoke(listNodes, undefined, fresh)).body.nodes[0].pins[0].value, 0);
   engine.manualChange(53);
-  const res = await invoke(listNodes);
+  const res = await invoke(listNodes, undefined, fresh);
   assert.equal(res.body.nodes[0].pins[0].value, 53);
   assert.equal(res.headers['Cache-Control'], 'no-store');
   assert.ok(engine.connections.slice(1).every(c => c.closed));
   t.mock.method(c, 'refreshFromEngine', async () => { throw Object.assign(new Error('engine unavailable'), { status: 503 }); });
-  assert.equal((await invoke(listNodes)).code, 503);
+  assert.equal((await invoke(listNodes, undefined, fresh)).code, 503);
+  c.disconnect();
+});
+
+test('default reads are served from the live stream without opening new connections', async t => {
+  const engine = transport(t);
+  const c = new NodosGraphClient();
+  await c.connect();
+  initialize(null, c);
+  for (let i = 0; i < 5; i++) assert.equal((await invoke(listNodes)).code, 200);
+  assert.equal(engine.connections.length, 1);
+  c._handleEditorEvent(change('/Make.Value', 8));
+  assert.equal((await invoke(listNodes)).body.nodes[0].pins[0].value, 8);
+  assert.equal(engine.connections.length, 1);
+  c.disconnect();
+});
+
+test('a change notification without a value triggers one refresh on the next read', async t => {
+  const engine = transport(t);
+  const c = new NodosGraphClient();
+  await c.connect();
+  initialize(null, c);
+  engine.manualChange(77);
+  const b = new flatbuffers.Builder(128);
+  const path = b.createString('/Make.Value');
+  b.startVector(4, 1, 4);
+  b.addOffset(path);
+  const paths = b.endVector();
+  const event = table(b, 1, { 0: paths });
+  b.finish(table(b, 3, { 1: event }, 17));
+  c._handleEditorEvent(decodeEditorEvent(b.asUint8Array()));
+  assert.equal(c.getPinValue(pinId), null);
+  assert.equal((await invoke(listNodes)).body.nodes[0].pins[0].value, 77);
+  assert.equal(engine.connections.length, 2);
+  assert.equal((await invoke(listNodes)).code, 200);
+  assert.equal(engine.connections.length, 2);
   c.disconnect();
 });
 
